@@ -1,0 +1,114 @@
+*&---------------------------------------------------------------------*
+*& Include          ZMM_VENDOR_EVALUATION_SEL
+*&---------------------------------------------------------------------*
+SELECTION-SCREEN : BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-000.
+  SELECT-OPTIONS:s_lifnr FOR lfa1-lifnr.
+  PARAMETERS : p_ekgrp TYPE ekko-ekgrp NO-DISPLAY.
+  SELECTION-SCREEN: BEGIN OF LINE. " 01.07.2023 | Aishwarya | SAPAMS-303 | MSDK909846
+    PARAMETERS: p_hld  AS CHECKBOX DEFAULT space.
+    SELECTION-SCREEN: COMMENT 3(6) TEXT-002. " 01.07.2023 | Aishwarya | SAPAMS-303 | MSDK909846
+*    PARAMETERS: p_arch AS CHECKBOX DEFAULT space. " 01.07.2023 | Aishwarya | SAPAMS-303 | MSDK909846
+*    SELECTION-SCREEN: COMMENT 12(20) TEXT-003. " 01.07.2023 | Aishwarya | SAPAMS-303 | MSDK909846
+  SELECTION-SCREEN END OF LINE." 01.07.2023 | Aishwarya | SAPAMS-303 | MSDK909846
+  PARAMETERS :rad1 RADIOBUTTON GROUP rad DEFAULT 'X' USER-COMMAND abc,
+              rad2 RADIOBUTTON GROUP rad,
+              rad3 RADIOBUTTON GROUP rad,
+              rad4 RADIOBUTTON GROUP rad,
+              rad5 RADIOBUTTON GROUP rad,
+              rad7 RADIOBUTTON GROUP rad,
+              rad6 RADIOBUTTON GROUP rad.
+*              p_arch AS CHECKBOX DEFAULT space MODIF ID a1,
+*              p_file TYPE rlgrap-filename DEFAULT 'M:\Finance&Administration\Procurement\Vendor Evaluation\Vendor' MODIF ID a2.
+  SELECTION-SCREEN:BEGIN OF LINE.
+    SELECTION-SCREEN POSITION 3.
+    PARAMETERS: p_arch AS CHECKBOX DEFAULT space MODIF ID a1. " 01.07.2023 | Aishwarya | SAPAMS-303 | MSDK909846
+    SELECTION-SCREEN: COMMENT 50(16) TEXT-003 FOR FIELD p_arch MODIF ID a1. " 01.07.2023 | Aishwarya | SAPAMS-303 | MSDK909846
+  SELECTION-SCREEN END OF LINE.
+*  SELECTION-SCREEN:BEGIN OF LINE.
+*    SELECTION-SCREEN POSITION 3.
+  PARAMETERS: p_file TYPE rlgrap-filename DEFAULT 'M:\Finance&Administration\Procurement\Vendor Evaluation\Vendor'.
+*  SELECTION-SCREEN END OF LINE.
+SELECTION-SCREEN : END OF BLOCK b1.
+
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR s_lifnr-low.
+  SELECT zvencode,zvendorname FROM zcr_adbp INTO TABLE @DATA(lt_vcode) WHERE zbusrela = 'ACTIVE'. "01.07.2023 | Aishwarya | SAPAMS-303 | MSDK909846 name added
+  DELETE ADJACENT DUPLICATES FROM lt_vcode COMPARING zvencode.
+  SORT lt_vcode BY zvencode. "01.07.2023 | Aishwarya | SAPAMS-303 | MSDK909846
+  CALL FUNCTION 'F4IF_INT_TABLE_VALUE_REQUEST'
+    EXPORTING
+      retfield    = 'ZVENCODE'
+      dynpprog    = sy-repid
+      dynpnr      = sy-dynnr
+      dynprofield = 'S_LIFNR-LOW'
+      value_org   = 'S'
+    TABLES
+      value_tab   = lt_vcode.
+
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR s_lifnr-high.
+  SELECT zvencode,zvendorname FROM zcr_adbp INTO TABLE @DATA(lt_vcode) WHERE zbusrela = 'ACTIVE'. "01.07.2023 | Aishwarya | SAPAMS-303 | MSDK909846 name added
+  DELETE ADJACENT DUPLICATES FROM lt_vcode COMPARING zvencode.
+  SORT lt_vcode BY zvencode. "01.07.2023 | Aishwarya | SAPAMS-303 | MSDK909846
+  CALL FUNCTION 'F4IF_INT_TABLE_VALUE_REQUEST'
+    EXPORTING
+      retfield    = 'ZVENCODE'
+      dynpprog    = sy-repid
+      dynpnr      = sy-dynnr
+      dynprofield = 'S_LIFNR-LOW'
+      value_org   = 'S'
+    TABLES
+      value_tab   = lt_vcode.
+
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_file.
+*---> F4 Help
+  IF p_file IS INITIAL.
+    CALL FUNCTION 'F4_FILENAME'
+      IMPORTING
+        file_name = p_file.
+  ENDIF.
+
+AT SELECTION-SCREEN .
+  IF rad6 = abap_true.
+    IF p_file IS INITIAL.
+      MESSAGE 'Please Select the path' TYPE 'E'.
+    ENDIF.
+  ELSE.
+    IF p_arch IS NOT INITIAL.
+      MESSAGE 'Archived checkbox can be selected only for Vendor performance report' TYPE 'E'.
+    ENDIF.
+    IF rad1 = abap_true .
+      DATA(lv_dept) = 'PROCUREMENT'.
+    ELSEIF rad2 = abap_true .
+      lv_dept = 'WAREHOUSE'.
+    ELSEIF rad3 = abap_true .
+      lv_dept = 'END-USER'.
+    ELSEIF rad4 = abap_true .
+      lv_dept = 'ACCOUNTING'.
+    ELSEIF rad5 = abap_true .
+      lv_dept = 'EHS'.
+    ELSEIF rad7 = abap_true .
+      lv_dept = 'PROCUREMENT'.
+    ENDIF.
+    SELECT SINGLE  * FROM zdepartment_id INTO @DATA(lw_depid) WHERE dept = @lv_dept AND approver = @sy-uname.
+    IF sy-subrc NE 0.
+      MESSAGE 'Selected department is wrong' TYPE 'E'.
+    ENDIF.
+  ENDIF.
+
+AT SELECTION-SCREEN OUTPUT.
+  IF rad6 IS NOT INITIAL.
+    LOOP AT SCREEN.
+      IF screen-group1 = 'A1'.
+        screen-active = '1'.
+      ELSEIF screen-group1 = 'A1'.
+        screen-active = '0'.
+      ENDIF.
+      MODIFY SCREEN.
+    ENDLOOP.
+  ELSE.
+    LOOP AT SCREEN.
+      IF screen-group1 = 'A1'.
+        screen-active = '0'.
+      ENDIF.
+      MODIFY SCREEN.
+    ENDLOOP.
+  ENDIF.

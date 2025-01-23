@@ -1,0 +1,182 @@
+*&---------------------------------------------------------------------*
+*& Include          ZMM_VENDOR_EVALUATION_TOP
+*&---------------------------------------------------------------------*
+TABLES:lfa1,zcr_adbp,zrating.
+TYPE-POOLS : slis.
+
+TYPES:BEGIN OF ty_dat,
+        chk        TYPE c,
+        lifnr      TYPE ztb_ven_eva-lifnr,
+        name1      TYPE name1_gp,
+        zstk       TYPE ztb_ven_eva-zstk,
+        zdelp      TYPE ztb_ven_eva-zdelp,
+        zpprc      TYPE ztb_ven_eva-zpprc,
+        zcc        TYPE ztb_ven_eva-zcc,
+        zpt        TYPE ztb_ven_eva-zpt,
+        zar        TYPE ztb_ven_eva-zar,
+        zr         TYPE ztb_ven_eva-zr,
+        zdelh      TYPE ztb_ven_eva-zdelh,
+        zds        TYPE ztb_ven_eva-zds,
+        zdels      TYPE ztb_ven_eva-zdels,
+        zpq        TYPE ztb_ven_eva-zpq,
+        zma        TYPE ztb_ven_eva-zma,
+        zas        TYPE ztb_ven_eva-zas,
+        zdoc       TYPE ztb_ven_eva-zdoc,
+        znpi       TYPE ztb_ven_eva-znpi,
+        zsi        TYPE ztb_ven_eva-zsi,
+        zscdh      TYPE ztb_ven_eva-zscdh,
+        zlom       TYPE ztb_ven_eva-zlom,
+        zecm       TYPE ztb_ven_eva-zecm,
+        zssrc      TYPE ztb_ven_eva-zssrc,
+        tot        TYPE p DECIMALS 2,
+        cmt1       TYPE ztb_ven_eva-cmt1,
+        cmt2       TYPE ztb_ven_eva-cmt2,
+        cmt3       TYPE ztb_ven_eva-cmt3,
+        cmt4       TYPE ztb_ven_eva-cmt4,
+        cmt5       TYPE ztb_ven_eva-cmt5,
+        exipry     TYPE zcr_expdate,
+        zyear      TYPE zgjahr1,
+        zdate      TYPE erdat,
+        status(50) TYPE c,
+        ekgrp      TYPE ekko-ekgrp,
+        color      TYPE lvc_t_scol,
+      END OF ty_dat.
+TYPES : BEGIN OF ty_dat1,
+          chk         TYPE c,
+          lifnr       TYPE ztb_ven_eva-lifnr,
+          name1       TYPE name1_gp,
+          ty_comp     TYPE char40,
+          desc        TYPE char20,
+          sdate       TYPE erdat,
+          cdate       TYPE erdat,
+          year        TYPE char4,
+          proc_zstk   TYPE char4,
+          proc_zdelp  TYPE char4,
+          proc_zpprc  TYPE char4,
+          proc_zcc    TYPE char4,
+          proc_zpt    TYPE char4,
+          proc_zar    TYPE char4,
+          proc_zr     TYPE char4,
+          proc        TYPE char4,
+          ware_zdelh  TYPE char4,
+          ware_zds    TYPE char4,
+          ware_zdels  TYPE char4,
+          ware        TYPE char4,
+          user_zpq    TYPE char4,
+          user_zma    TYPE char4,
+          user_zas    TYPE char4,
+          user        TYPE char4,
+          acco_zdoc   TYPE char4,
+          acco_znpi   TYPE char4,
+          acco_zsi    TYPE char4,
+          acco        TYPE char4,
+          ehs_zscdh   TYPE char4,
+          ehs_zlom    TYPE char4,
+          ehs_zecm    TYPE char4,
+          ehs_zssrc   TYPE char4,
+          ehs         TYPE char4,
+          total       TYPE char20,
+          remarks     TYPE char4,
+          status      TYPE char50,
+          exipry      TYPE zcr_expdate,
+          color       TYPE lvc_t_scol,
+* start 01.07.2023 | Aishwarya | SAPAMS-303 | MSDK909846 | archiving logic
+          seq         TYPE ztb_ven_eva-seq,
+          aind        TYPE zdel,
+          adt         TYPE zdel_date,
+* end 01.07.2023 | Aishwarya | SAPAMS-303 | MSDK909846 | archiving logic
+          zdate6      TYPE erdat,
+          celltab     TYPE  lvc_t_styl,
+          zend_submit TYPE zsub,
+        END OF ty_dat1.
+* start 01.07.2023 | Aishwarya | SAPAMS-303 | MSDK909846
+TYPES: BEGIN OF ty_final.
+TYPES: include TYPE ztb_ven_eva.
+TYPES   celltab TYPE  lvc_t_styl.
+TYPES :  END OF ty_final.
+
+*DATA: BEGIN OF ty_final.
+*        INCLUDE STRUCTURE ztb_ven_eva.
+*DATA:   celltab TYPE lvc_t_styl.
+*DATA: END OF ty_final.
+* end 01.07.2023 | Aishwarya | SAPAMS-303 | MSDK909846
+DATA : it_dat1     TYPE TABLE OF ty_dat1,
+       it_dat1_new TYPE TABLE OF ty_dat1,
+       wa_dat1     TYPE ty_dat1,
+       wa_dat1_new TYPE ty_dat1.
+
+DATA:it_dat             TYPE TABLE OF ty_dat,
+     wa_dat             TYPE ty_dat,
+     it_final_copy      TYPE TABLE OF ztb_ven_eva_c,
+     it_final_delete    TYPE TABLE OF ztb_ven_eva_d,
+     it_final           TYPE TABLE OF ztb_ven_eva,
+     it_final_new       TYPE TABLE OF ty_final, " 01.07.2023 | Aishwarya | SAPAMS-303 | MSDK909846
+     wa_final_new       TYPE ty_final, " 01.07.2023 | Aishwarya | SAPAMS-303 | MSDK909846
+     it_final_c         TYPE TABLE OF ztb_ven_eva,
+     lt_data            TYPE TABLE OF ztb_ven_eva,
+     wa_data            TYPE ztb_ven_eva,
+     wa_final           TYPE ztb_ven_eva,
+     wa_data2           TYPE ztb_ven_eva,
+     g_grid             TYPE REF TO cl_gui_alv_grid,
+     g_custom_container TYPE REF TO cl_gui_custom_container,
+     gt_fieldcat        TYPE lvc_t_fcat,
+     gs_layout          TYPE lvc_s_layo,
+*     * To colour a cell.
+     ls_cellcolour      TYPE lvc_s_scol,
+     it_fcat            TYPE TABLE OF slis_fieldcat_alv,
+     wa_fcat            TYPE slis_fieldcat_alv,
+     wa_lay             TYPE slis_layout_alv,
+     ls_fcat            TYPE lvc_s_fcat,
+     lv_flag            TYPE c,
+     lv_wavg            TYPE pa0015-betrg,
+     lv_tot             TYPE p DECIMALS 2,
+     lv_tot1            TYPE p DECIMALS 2,
+     lv_dept            TYPE string,
+     lv_val             TYPE ztb_ven_eva-zstk,
+     wa_smf             TYPE zst_ven_eva,
+     it_smf             TYPE ztt_ven_eva,
+     lt_dept            TYPE TABLE OF zdepartment,
+     lt_rat             TYPE   TABLE OF zrating,
+     lv_calc            TYPE char5,
+     lv_tot_dep         TYPE char5,
+     gv_title           TYPE string,
+     gv_title1          TYPE string,
+     lv_delmsg          TYPE string. "19.11.2023 | Aishwarya | MPCLAMS-225 | MSDK910077
+
+TYPES : BEGIN OF ty_t024,
+          ekgrp TYPE t024-ekgrp,
+          eknam TYPE t024-eknam,
+        END OF ty_t024.
+DATA : lt_t024 TYPE TABLE OF ty_t024,
+       ls_t024 TYPE ty_t024.
+
+DATA: send_request     TYPE REF TO            cl_bcs,
+      send_request1    TYPE REF TO            cl_bcs,
+      text             TYPE TABLE OF          w3html,
+      ls_text          TYPE w3html,
+      lv_subject       TYPE                   so_obj_des,
+      document         TYPE REF TO cl_document_bcs,
+      document1        TYPE REF TO cl_document_bcs,
+      recipient        TYPE REF TO if_recipient_bcs,
+      recipient1       TYPE REF TO if_recipient_bcs,
+      sent_to_all      TYPE os_boolean,
+      gr_bcs_exception TYPE REF TO cx_bcs,
+      lv_user_1        TYPE uname,
+      username         TYPE  bapibname-bapibname,
+      address          TYPE  bapiaddr3,
+      return           TYPE TABLE OF  bapiret2,
+      t_header         TYPE STANDARD TABLE OF w3head WITH HEADER LINE, "Header
+      t_fields         TYPE STANDARD TABLE OF w3fields WITH HEADER LINE, "Fields
+      t_html_x         TYPE STANDARD TABLE OF w3html, "Html
+      wa_header1       TYPE  w3html, "Html
+      wa_header        TYPE w3head,
+      w_head           TYPE w3head,
+      lv_addr          TYPE  adr6-smtp_addr.
+
+TYPES : BEGIN OF ty_lfa1,
+          lifnr TYPE lifnr,
+          name1 TYPE lfa1-name1,
+        END OF ty_lfa1.
+
+DATA : t_lfa1 TYPE TABLE OF ty_lfa1.
+DATA fcode TYPE TABLE OF sy-ucomm.

@@ -1,0 +1,1397 @@
+*&---------------------------------------------------------------------*
+*& Include          ZMM_RP_VENDOR_SUMMARY_F01
+*&---------------------------------------------------------------------*
+START-OF-SELECTION.
+
+FORM get_data .
+
+  REFRESH : gt_final,lt_final,lt_final1.
+  SELECT a~lifnr,a~name1,a~erdat,f~remark,a~sortl,a~stras,c~street,c~city1,a~pstlz,a~ort01,a~land1,( c~name1 &&  c~name2 && c~name3 && c~name4 )  AS adrc_name1 ,"added on 27.03.2023
+            e~landx50,a~telf1,a~telfx,d~smtp_addr,g~vtext,h~bpkind,i~text40,
+            b~ekorg
+                                                                 FROM lfa1 AS a INNER JOIN lfm1 AS b
+                                                                   ON b~lifnr = a~lifnr
+                                                                   AND b~loevm NE 'X'
+                                                                   AND a~ktokk NE 'MV01' " Added by Jisha 21.07.2022
+                                                                   LEFT OUTER JOIN adrc AS c
+                                                                   ON c~addrnumber = a~adrnr
+                                                                   LEFT OUTER  JOIN adr6 AS d
+                                                                   ON d~addrnumber = a~adrnr
+                                                                   AND d~flgdefault EQ 'X'
+                                                                   LEFT OUTER JOIN t005t AS e
+                                                                   ON e~land1 = a~land1
+                                                                   AND e~spras = 'E'
+                                                                   LEFT OUTER JOIN adrct AS f
+                                                                    ON f~addrnumber = a~adrnr
+                                                                   LEFT OUTER JOIN tvzbt AS g
+                                                                    ON g~zterm = b~zterm
+                                                                    AND g~spras = 'E'
+                                                                   LEFT OUTER JOIN but000 AS h
+                                                                    ON h~partner = a~lifnr
+                                                                   LEFT OUTER JOIN tb004t AS i
+                                                                    ON i~bpkind = h~bpkind
+                                                                    AND i~spras = 'E'
+
+                                                                   INTO TABLE @DATA(lt_final)
+                                                                   WHERE a~lifnr IN @so_lifnr.
+  IF sy-subrc EQ 0.
+    SORT lt_final BY lifnr ASCENDING.
+  ELSE.
+    MESSAGE 'No Data for the given Selection Criteria' TYPE 'I'.
+  ENDIF.
+
+  SELECT  zvencode,
+          zvendorname,
+          zcheck_date,
+          znexreview_date,
+          zcheck_datecr,
+          znexreview_datecr,
+          zbusrela,
+          zqualified ,
+          zcr_taxcard ,
+          zcr_expdate ,
+          ztax_carddate ,
+          zcomp_card_ex, " MSDK910037 | 04.11.2023 | Aishwarya
+          zremarks,
+          zicvscore,
+          com_reg
+     FROM zcr_adbp INTO TABLE @DATA(lt_zcr_adbp)
+     FOR ALL ENTRIES IN @lt_final
+     WHERE zvencode = @lt_final-lifnr.
+
+     SELECT zlifnr,zsup_apr4_date
+  FROM zfit_ven_pre_qua
+  INTO TABLE @DATA(lt_zfit_ven_pre_qua)
+  FOR ALL ENTRIES IN @lt_zcr_adbp
+  WHERE zlifnr = @lt_zcr_adbp-zvencode."changes by Suyash"
+
+
+  SELECT partner,  comp_head
+     FROM  bp001
+     INTO TABLE @DATA(lt_bp001)
+    FOR ALL ENTRIES IN @lt_final
+    WHERE partner = @lt_final-lifnr.
+
+*  IF sy-subrc EQ 0.
+*    endif.
+  SELECT partner, type,idnumber, institute, country " ADDED by ujwal.
+  FROM but0id
+  INTO TABLE @DATA(lt_but0id)
+  FOR ALL ENTRIES IN @lt_bp001
+  WHERE partner = @lt_bp001-partner.  " ADDED BY UJWAL.
+
+
+  CLEAR : gv_active , gv_iactive.
+  IF lt_final IS NOT INITIAL.
+    LOOP AT lt_final INTO DATA(ls_final).
+
+      gs_final-lifnr = ls_final-lifnr.
+      gs_final-sortl = ls_final-sortl.
+      gs_final-erdat = ls_final-erdat.
+      gs_final-name1 = ls_final-adrc_name1. "MSDK910037 | 04.11.2023 | Aishwarya
+      gs_final-ekorg = ls_final-ekorg.
+
+      gs_final-addr2 =  ls_final-city1.
+      gs_final-telf1 = ls_final-telf1.
+      gs_final-telfx = ls_final-telfx.
+      gs_final-smtp_addr = ls_final-smtp_addr.
+
+      gs_final-vtext = ls_final-vtext.
+
+*      IF ls_final-lifnr is NOT INITIAL. "suyash"
+*        gs_final-ZSUP_APR4_DATE = ls_final-ZSUP_APR4_DATE. "suyash"
+*      ENDIF. "suyash"
+
+
+      SPLIT ls_final-remark AT ',' INTO gs_final-remark gs_final-contact2 gs_final-contact3.
+
+      IF ls_final-land1 = 'QA'.
+        gs_final-ivendor = 'NO'.
+      ELSE.
+        gs_final-ivendor = 'YES'.
+      ENDIF.
+
+      READ TABLE lt_zfit_ven_pre_qua INTO data(LS_zfit_ven_pre_qua) with key ZLIFNR = gs_final-lifnr.  "Suyash"
+      if sy-subrc = 0.
+        gs_final-ZSUP_APR4_DATE = LS_zfit_ven_pre_qua-ZSUP_APR4_DATE.     "Suyash"
+      endif.
+
+      READ TABLE lt_zcr_adbp INTO DATA(ls_zcr_adbp)  WITH KEY zvencode = gs_final-lifnr.
+      IF sy-subrc EQ 0.
+        DATA: znexreview_date TYPE DATS.
+        CALL FUNCTION 'RP_CALC_DATE_IN_INTERVAL'
+          EXPORTING
+            date      = ls_zcr_adbp-znexreview_date
+            days      = 0
+            months    = 0
+            signum    = '+'
+            years     = 2
+          IMPORTING
+            calc_date = znexreview_date.
+
+        gs_final-zcheck_date       = ls_zcr_adbp-zcheck_date.
+*        gs_final-znexreview_date   = lv_new_date. ""Added By Aaditya
+        gs_final-znexreview_date   = ls_zcr_adbp-znexreview_date.
+        gs_final-zcheck_datecr     = ls_zcr_adbp-zcheck_datecr.
+        gs_final-znexreview_datecr = ls_zcr_adbp-znexreview_datecr.
+        gs_final-zbusrela          = ls_zcr_adbp-zbusrela.
+        gs_final-zqualified        = ls_zcr_adbp-zqualified.
+        gs_final-zcr_expdate       = ls_zcr_adbp-zcr_expdate.
+        gs_final-ztax_carddate     = ls_zcr_adbp-ztax_carddate.
+        gs_final-zcomp_card_ex     = ls_zcr_adbp-zcomp_card_ex. " MSDK910037 | 04.11.2023 | Aishwarya
+        gs_final-zremarks          = ls_zcr_adbp-zremarks.
+        gs_final-zicvscore         = ls_zcr_adbp-zicvscore.
+        gs_final-com_reg         = ls_zcr_adbp-com_reg.
+      ENDIF.
+      READ TABLE lt_bp001 INTO DATA(ls_bp001) WITH KEY partner = gs_final-lifnr .
+      IF sy-subrc = 0.
+        gs_final-com_reg         = ls_bp001-comp_head.
+      ENDIF.
+
+
+      DATA : lv_owner_index   TYPE i,                                      " added by Ujwal.
+             lv_owner_details TYPE string.
+      LOOP AT lt_but0id INTO DATA(ls_but0id) WHERE partner = gs_final-lifnr.
+        lv_owner_index = sy-tabix.
+        CONCATENATE ls_but0id-institute
+                    cl_abap_char_utilities=>newline
+                    'ID.NO:' ls_but0id-idnumber
+                    cl_abap_char_utilities=>newline
+                    'Nationality:' ls_but0id-country
+                    INTO lv_owner_details SEPARATED BY ' '.
+        CONCATENATE ls_but0id-type lv_owner_details INTO gs_final-type.
+        CASE lv_owner_index.
+          WHEN 1.
+            gs_final-owner_detail1 = lv_owner_details.
+          WHEN 2.
+            gs_final-owner_detail2 = lv_owner_details.
+          WHEN 3.
+            gs_final-owner_detail3 = lv_owner_details.
+          WHEN 4.
+            gs_final-owner_detail4 = lv_owner_details.
+          WHEN 5.
+            gs_final-owner_detail5 = lv_owner_details.
+          WHEN 6.
+            gs_final-owner_detail6 = lv_owner_details.
+          WHEN 7.
+            gs_final-owner_detail7 = lv_owner_details.
+          WHEN 8.
+            gs_final-owner_detail8 = lv_owner_details.
+          WHEN 9.
+            gs_final-owner_detail9 = lv_owner_details.
+          WHEN 10.
+            gs_final-owner_detail10 = lv_owner_details.
+        ENDCASE.
+        CLEAR : lv_owner_details,lv_owner_index.
+      ENDLOOP.                                                " added by Ujwal.
+
+
+      gs_final-bptype = ls_final-text40.
+
+      CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+        EXPORTING
+          input  = gs_final-lifnr  "added on 09.12.2020
+        IMPORTING
+          output = gs_final-lifnr.
+
+      DATA lv_date  TYPE sy-datum.
+      DATA lv_date1 TYPE sy-datum.
+      lv_date1 = sy-datum.
+      lv_date  = lv_date1 + 90.
+
+
+*      IF ( gs_final-zqualified = 'YES' OR gs_final-zqualified = 'Not Applicable' ) AND  "Deleted by KB Pang MSDK910465 02.06.2024
+      IF ( gs_final-zqualified = 'YES' OR gs_final-zqualified = 'Not Applicable' OR gs_final-zqualified = 'NO') AND "Inserted by KB Pang MSDK910465 02.06.2024
+        gs_final-zbusrela = 'ACTIVE'.
+        IF gs_final-znexreview_date > lv_date.
+*         IF gs_final-znexreview_date > lv_date AND gs_final-znexreview_date + 730.
+
+
+          gs_final-vendor_st = TEXT-100.
+        ELSEIF gs_final-znexreview_date LE ( lv_date ) AND gs_final-znexreview_date GE sy-datum.
+
+          gs_final-vendor_st = TEXT-200.
+
+        ELSEIF gs_final-znexreview_date LT sy-datum.
+          gs_final-vendor_st = TEXT-300.
+
+        ENDIF.
+      ELSE.
+        gs_final-vendor_st = 'EXPIRED'.
+      ENDIF.
+      APPEND gs_final TO gt_final.
+      CLEAR: gs_final,ls_zcr_adbp.
+    ENDLOOP.
+  ENDIF.
+
+  PERFORM fcat USING :
+        '1' 'LIFNR' 'Vendor Code' 'X',
+*        '2 ' 'SORTL' 'Q4 Vendor' ' ',
+        '3' 'NAME1' 'Vendor Name' ' ',
+        '4' 'REMARK' 'Contact1' ' ',
+        '5' 'CONTACT2' 'Contact2' ' ',
+        '6'  'CONTACT3' 'Contact3' ' ',
+        '7'  'ADDR1' 'Address1' ' ',
+        '8'  'ADDR2' 'Address2' ' ',
+        '8'  'ADDR3' 'Address3' ' ',
+        '9'  'TELF1' 'Telephone No' ' ',
+        '10' 'TELFX' 'Vendor Fax' ' ',
+        '11' 'SMTP_ADDR' 'Email Address' ' ',
+         '12' 'OWNER_DETAIL1' 'Owner Detail1'  '',                        "added by ujwal.
+         '12' 'OWNER_DETAIL2' 'Owner Detail2'  '',
+         '12' 'OWNER_DETAIL3' 'Owner Detail3'  '',
+         '12' 'OWNER_DETAIL4' 'Owner Detail4'  '',
+         '12' 'OWNER_DETAIL5' 'Owner Detail5'  '',
+         '12' 'OWNER_DETAIL6' 'Owner Detail6'  '',
+         '12' 'OWNER_DETAIL7' 'Owner Detail7'  '',
+         '12' 'OWNER_DETAIL8' 'Owner Detail8'  '',
+         '12' 'OWNER_DETAIL9' 'Owner Detail9'  '',
+         '12' 'OWNER_DETAIL10' 'Owner Detail10'  '',                      " added by Ujwal.
+        '13'     'BPTYPE' 'Type Of Company' ' ', "previously BP type
+        '14'    'IVENDOR' 'International Vendor' ' ',
+        '15'    'VTEXT' 'Payment Terms' ' ',
+        '16'   'ERDAT' 'Approved On' ' ',
+        '17'    'ZCHECK_DATE' ' Vendor Evaluation Checked Date' ' ',
+        '18'    'ZNEXREVIEW_DATE' 'Vendor Evaluation Next Review Date' ' ',
+        '19'    'ZCHECK_DATECR' 'CR Checked Date' ' ',
+        '20'    'ZNEXREVIEW_DATECR' 'CR Next Review Date' ' ',
+        '21'    'ZBUSRELA' 'Business Relation' ' ',
+*        '21'    'ZTYPCOMP' 'Type of Company' ' ',
+        '22'   'ZQUALIFIED' 'Qualified' ' ',
+        '23'    'ZCR_TAXCARD' 'CR/Tax Card Submitted' ' ',
+        '24'    'ZSTATUS' 'CR/Tax Card Status' ' ',
+        '24'    'ZCR_EXPDATE' 'CR Expiry Date' ' ',
+        '25'   'ZTAX_CARDDATE' 'Tax Card Expiry Date'  ' ',
+        '26'  'ZCOMP_CARD_EX' 'Computer Card Expiry Date' ' ' ," MSDK910037 | 04.11.2023 | Aishwarya
+*        '26'   'ZEMAIL_DATE' 'Vendor Request For Info Email Send Date' ' ',
+*        '27'  'ZLETTER_RECDATE' 'Vendor Profile Received Date' ' ',   "Before Letter Received Date
+*        '28'   'ZQ4_DATA' 'Q4 Data' ' ',
+        '30'    'COM_REG' 'Commercial Registration Number' ' ',
+        '29'    'ZICVSCORE' 'ICV Certificate' ' ',
+        '31'    'ZREMARKS'  'Remarks' ' ',
+        '32'    'VENDOR_ST' 'Vendor Evaluation Status' ' ',
+*        '30'    'ZDATAVAD' 'Data Validation' ' ',
+*        '31'     'ZSTATUS'  'Status' ' ',
+         '33'    'ZSUP_APR4_DATE' 'Vendor Prequalification Completed Date'  ' ', "changes by Suyash"
+         '34'    'ZSUP_APR4_DATE' 'Vendor Prequalification Approved Date' ' '. "change by Suyash"
+*
+
+
+  DATA : gv_date5 TYPE char5.
+  is_layout-coltab_fieldname = 'COLOR'.
+  is_layout-colwidth_optimize = 'X'.
+  IF gt_final IS NOT INITIAL.
+
+    IF p_bus IS NOT INITIAL.
+      DELETE gt_final WHERE zbusrela NE p_bus.
+    ENDIF.
+    DATA: lv_index TYPE sy-tabix .
+
+    DATA : e_days TYPE vtbbewe-atage.
+
+    CLEAR : gv_active,gv_iactive,gv_tactive.
+    LOOP AT gt_final INTO gs_final.
+      lv_index = sy-tabix.
+
+      IF gs_final-vendor_st IS NOT INITIAL.
+*        CASE gs_final-vendor_st.
+*        WHEN 'ACTIVE'.
+*          ls_cellcolour-fname = 'VENDOR_ST'.
+*          ls_cellcolour-color-col = '5'.
+*        WHEN 'ABOUT TO EXPIRE'.
+*          ls_cellcolour-fname = 'VENDOR_ST'.
+*          ls_cellcolour-color-col = '7'.
+*        WHEN 'EXPIRED'.
+*          ls_cellcolour-fname = 'VENDOR_ST'.
+*          ls_cellcolour-color-col = '6'.
+*      ENDCASE.
+        IF gs_final-vendor_st = 'ACTIVE'.
+          ls_cellcolour-fname = 'VENDOR_ST'.
+          ls_cellcolour-color-col = '5 '.
+          ls_cellcolour-color-int = '1'.
+          ls_cellcolour-color-inv = '0'.
+          APPEND ls_cellcolour TO gs_final-color.
+          CLEAR ls_cellcolour.
+*        ELSEIF gs_final-vendor_st = 'About to Expire'.
+        ELSEIF gs_final-vendor_st = 'ABOUT TO EXPIRE'.
+          ls_cellcolour-fname = 'VENDOR_ST'.
+          ls_cellcolour-color-col = '7'.
+          ls_cellcolour-color-int = '1'.
+          ls_cellcolour-color-inv = '0'.
+          APPEND ls_cellcolour TO gs_final-color.
+          CLEAR ls_cellcolour.
+        ELSEIF gs_final-vendor_st = 'EXPIRED'.
+          ls_cellcolour-fname = 'VENDOR_ST'.
+          ls_cellcolour-color-col = '6'.
+          ls_cellcolour-color-int = '1'.
+          ls_cellcolour-color-inv = '0'.
+          APPEND ls_cellcolour TO gs_final-color.
+          CLEAR ls_cellcolour.
+
+        ELSEIF gs_final-vendor_st = 'EXPIRED'.
+          ls_cellcolour-fname = 'TYpes(OD)'.
+          ls_cellcolour-color-col = '12'.
+          ls_cellcolour-color-int = '1'.
+          ls_cellcolour-color-inv = '0'.
+          APPEND ls_cellcolour TO gs_final-color.
+          CLEAR ls_cellcolour.
+
+        ENDIF.
+
+        MODIFY gt_final FROM gs_final INDEX lv_index  TRANSPORTING color vendor_st.
+      ENDIF.
+
+      lv_count4 = 0.
+      IF   gs_final-zcr_expdate IS NOT INITIAL OR gs_final-ztax_carddate IS NOT INITIAL..
+        IF  gs_final-zcr_expdate LE sy-datum OR gs_final-ztax_carddate LE sy-datum ..
+          ls_cellcolour-fname = 'ZCR_EXPDATE'.
+          ls_cellcolour-color-col = '6'.
+          ls_cellcolour-color-int = '1'.
+          ls_cellcolour-color-inv = '0'.
+          APPEND ls_cellcolour TO gs_final-color .
+
+
+          CLEAR ls_cellcolour.
+
+
+          IF gs_final-zcr_taxcard <> 'NO' AND  gs_final-zstatus <> 'EXPIRED'.
+            gs_final-zcr_taxcard = 'NO'.
+            gs_final-zstatus = 'EXPIRED'.
+          ENDIF.
+          IF gs_final-zbusrela = 'ACTIVE' .
+            lv_count5 = lv_count5 + 1.
+          ENDIF.
+
+          MODIFY gt_final FROM gs_final INDEX lv_index  TRANSPORTING color zcr_taxcard zstatus.
+        ENDIF.
+
+
+        IF   gs_final-zcr_expdate IS NOT INITIAL OR gs_final-ztax_carddate IS NOT INITIAL.
+          IF   gs_final-zcr_expdate GT 0 AND  gs_final-zcr_expdate LE 90 AND  gs_final-ztax_carddate GT 0 AND gs_final-ztax_carddate LE 90 .
+*          IF  gs_final-zcr_expdate GE 90 AND gs_final-ztax_carddate LE 90.
+*        IF  gs_final-zcr_expdate GE sy-datum OR gs_final-ztax_carddate GE sy-datum..
+            ls_cellcolour-fname = 'ZCR_EXPDATE'.
+            ls_cellcolour-color-col = '6'.
+            ls_cellcolour-color-int = '1'.
+            ls_cellcolour-color-inv = '0'.
+            APPEND ls_cellcolour TO gs_final-color .
+
+
+
+            CLEAR ls_cellcolour.
+            IF gs_final-zstatus <> 'EXPIRES WITHIN 3 MONTHS'.
+              gs_final-zstatus = 'EXPIRES WITHIN 3 MONTHS'.
+
+            ENDIF.
+*          IF gs_final-zcr_taxcard <> 'NO' AND  gs_final-zstatus <> 'EXPIRED'.                        "" Testing Code For Cr and tax card about to expire logic
+*          gs_final-zcr_taxcard = 'NO'.
+*          gs_final-zstatus = 'EXPIRED'.
+*           ENDIF.
+            IF gs_final-zbusrela = 'ACTIVE' .
+*            IF lv_count6 = 0.
+              lv_count6 = lv_count6 + 1.
+            ENDIF.
+
+          ENDIF.
+          MODIFY gt_final FROM gs_final INDEX lv_index  TRANSPORTING color zcr_taxcard zstatus.
+        ENDIF.
+
+*IF gs_final-zcr_expdate IS NOT INITIAL OR gs_final-ztax_carddate IS NOT INITIAL.
+*  " Initialize a flag to ensure the count is incremented only once
+*  DATA lv_count_incremented TYPE abap_bool VALUE abap_false.
+*
+*  " Check if either the CR card date or Tax card date is about to expire
+*  IF gs_final-zcr_expdate GT 0 AND gs_final-zcr_expdate LE 90 OR
+*     gs_final-ztax_carddate GT 0 AND gs_final-ztax_carddate LE 90.
+*    ls_cellcolour-fname = 'ZCR_EXPDATE'.
+*    ls_cellcolour-color-col = '6'.
+*    ls_cellcolour-color-int = '1'.
+*    ls_cellcolour-color-inv = '0'.
+*    APPEND ls_cellcolour TO gs_final-color.
+*
+*    CLEAR ls_cellcolour.
+*
+*    " Update the status
+*    IF gs_final-zstatus <> 'EXPIRES WITHIN 3 MONTHS'.
+*      gs_final-zstatus = 'EXPIRES WITHIN 3 MONTHS'.
+*    ENDIF.
+*
+*    " Increment the count only once per entry
+*    IF gs_final-zbusrela = 'ACTIVE' AND lv_count_incremented = abap_false.
+*      lv_count6 = lv_count6 + 1.
+*      lv_count_incremented = abap_true. " Mark the flag to avoid multiple increments
+*    ENDIF.
+*
+*    MODIFY gt_final FROM gs_final INDEX lv_index TRANSPORTING color zcr_taxcard zstatus.
+*  ENDIF.
+*ENDIF.
+
+
+*        CLEAR : e_days.
+      ENDIF.
+
+      CALL FUNCTION 'FIMA_DAYS_AND_MONTHS_AND_YEARS'
+        EXPORTING
+          i_date_from = sy-datum
+          i_date_to   = gs_final-zcr_expdate
+        IMPORTING
+          e_days      = e_days.
+*      endif.
+
+      CALL FUNCTION 'FIMA_DAYS_AND_MONTHS_AND_YEARS'
+        EXPORTING
+          i_date_from = sy-datum
+          i_date_to   = gs_final-ztax_carddate
+        IMPORTING
+          e_days      = e_days.
+*         ENDIF.
+
+      .
+
+
+      .
+
+
+*
+
+      .
+
+
+
+*        IF   gs_final-zcr_expdate IS NOT INITIAL OR gs_final-ztax_carddate IS NOT INITIAL.
+*        IF  gs_final-zcr_expdate GE sy-datum OR gs_final-ztax_carddate GE sy-datum.
+*          ls_cellcolour-fname = 'ZCR_EXPDATE'.
+*          ls_cellcolour-color-col = '6'.
+*          ls_cellcolour-color-int = '1'.
+*          ls_cellcolour-color-inv = '0'.
+*          APPEND ls_cellcolour TO gs_final-color .
+*          CLEAR ls_cellcolour.
+*          IF gs_final-zcr_taxcard <> 'NO' AND  gs_final-zstatus <> 'EXPIRED'.                        "" Orignal logic For Cr and tax card about to expire logic
+*          gs_final-zcr_taxcard = 'NO'.
+*          gs_final-zstatus = 'EXPIRED'.
+*           ENDIF.
+*          IF gs_final-zbusrela = 'ACTIVE' .
+*            lv_count6 = lv_count6 + 1.
+*          ENDIF.
+*
+*          MODIFY gt_final FROM gs_final INDEX lv_index  TRANSPORTING color zcr_taxcard zstatus.
+*        ENDIF.
+
+
+
+
+
+
+      " Validation for ZTAX_CARDDATE
+      IF gs_final-ztax_carddate LE sy-datum.
+        ls_cellcolour-fname = 'ZTAX_CARDDATE'.
+        ls_cellcolour-color-col = '6'.
+        ls_cellcolour-color-int = '1'.
+        ls_cellcolour-color-inv = '0'.
+        APPEND ls_cellcolour TO gs_final-color.
+        CLEAR ls_cellcolour.
+        IF gs_final-zstatus <> 'EXPIRED'.
+          gs_final-zstatus = 'EXPIRED'.
+        ENDIF.
+
+      ELSEIF e_days LE 90 AND e_days GT 0.
+        ls_cellcolour-fname = 'ZTAX_CARDDATE'.
+        ls_cellcolour-color-col = '7'.
+        ls_cellcolour-color-int = '1'.
+        ls_cellcolour-color-inv = '0'.
+        APPEND ls_cellcolour TO gs_final-color.
+        CLEAR ls_cellcolour.
+        IF gs_final-zstatus <> 'EXPIRES WITHIN 3 MONTHS'.
+          gs_final-zstatus = 'EXPIRES WITHIN 3 MONTHS'.
+        ENDIF.
+        IF gs_final-zbusrela = 'ACTIVE'.
+          lv_count4 = lv_count4 + 1.
+        ENDIF.
+
+
+        MODIFY gt_final FROM gs_final  INDEX lv_index TRANSPORTING color zstatus.      "" Commented for test 6jan 25
+      ENDIF.
+
+
+
+
+      CLEAR : e_days.
+      CALL FUNCTION 'FIMA_DAYS_AND_MONTHS_AND_YEARS'
+        EXPORTING
+          i_date_from = sy-datum
+          i_date_to   = gs_final-ztax_carddate
+        IMPORTING
+          e_days      = e_days.
+
+
+
+
+
+
+*        ENDIF.
+
+
+
+      " Validation for ZCR_EXPDATE
+      IF e_days LE 90 AND e_days GT 0.
+        IF gs_final-zstatus = 'EXPIRED'.
+          ls_cellcolour-color-col = '6'. " Expired color code
+        ELSE.
+          ls_cellcolour-color-col = '7'. " About to expire color code                     ""changes made for testing 6jan25
+          IF gs_final-zstatus <> 'EXPIRES WITHIN 3 MONTHS'.
+            gs_final-zstatus = 'EXPIRES WITHIN 3 MONTHS'.
+          ENDIF.
+        ENDIF.
+
+
+        ls_cellcolour-fname = 'ZCR_EXPDATE'.
+        ls_cellcolour-color-col = '7'.
+        ls_cellcolour-color-int = '1'.
+        ls_cellcolour-color-inv = '0'.
+        APPEND ls_cellcolour TO gs_final-color.
+        CLEAR ls_cellcolour.
+*          IF gs_final-zstatus <> 'EXPIRES WITHIN 3 MONTHS'.
+*            gs_final-zstatus = 'EXPIRES WITHIN 3 MONTHS'.
+*          ENDIF.
+        IF gs_final-zbusrela = 'ACTIVE'.
+          lv_count2 = lv_count2 + 1.
+        ENDIF.
+        MODIFY gt_final FROM gs_final  INDEX lv_index TRANSPORTING color zstatus.
+
+      ENDIF.
+
+      CLEAR : e_days.
+      CALL FUNCTION 'FIMA_DAYS_AND_MONTHS_AND_YEARS'
+        EXPORTING
+          i_date_from = sy-datum
+          i_date_to   = gs_final-zcr_expdate
+        IMPORTING
+          e_days      = e_days.
+
+*        ENDIF.
+
+
+
+
+*        added for tax card counting
+*      IF  e_days LE 90 OR e_days GT 0.
+*          ls_cellcolour-fname = 'ZTAX_CARDDATE'.
+*          ls_cellcolour-color-col = '7'.
+*          ls_cellcolour-color-int = '1'.
+*          ls_cellcolour-color-inv = '0'.
+*          APPEND ls_cellcolour TO gs_final-color .
+*          CLEAR ls_cellcolour.
+*          IF gs_final-zcr_taxcard <> 'NO' OR  gs_final-zstatus <> 'EXPIRED'.
+*            gs_final-zcr_taxcard = 'NO'.
+*            gs_final-zstatus = 'EXPIRED'.
+**          ENDIF.
+*          IF gs_final-zbusrela = 'ACTIVE'.
+*            lv_count3 = lv_count3 + 1.
+*          ENDIF.
+*          MODIFY gt_final FROM gs_final INDEX lv_index  TRANSPORTING color zcr_taxcard zstatus.
+*        ENDIF.
+*        ENDIF.
+
+      " Added for Computer card counting.
+      IF   gs_final-zcomp_card_ex IS NOT INITIAL.
+        IF  gs_final-zcomp_card_ex LE sy-datum.
+          ls_cellcolour-fname = 'ZCOMP_CARD_EX'.
+          ls_cellcolour-color-col = '6'.
+          ls_cellcolour-color-int = '1'.
+          ls_cellcolour-color-inv = '0'.
+          APPEND ls_cellcolour TO gs_final-color .
+          CLEAR ls_cellcolour.
+          gs_final-zcr_taxcard = 'NO'.
+          gs_final-zstatus = 'EXPIRED'.
+          IF gs_final-zbusrela = 'ACTIVE'.
+            lv_count7 = lv_count7 + 1.
+          ENDIF.
+          MODIFY gt_final FROM gs_final INDEX lv_index  TRANSPORTING color zcr_taxcard zstatus.
+        ENDIF.
+
+        CLEAR : e_days.
+        CALL FUNCTION 'FIMA_DAYS_AND_MONTHS_AND_YEARS'
+          EXPORTING
+            i_date_from = sy-datum
+            i_date_to   = gs_final-zcomp_card_ex
+          IMPORTING
+            e_days      = e_days.
+
+        IF  e_days LE 90 AND e_days GT 0.
+          ls_cellcolour-fname = 'ZCOMP_CARD_EX'.
+          ls_cellcolour-color-col = '7'.
+          ls_cellcolour-color-int = '1'.
+          ls_cellcolour-color-inv = '0'.
+          APPEND ls_cellcolour TO gs_final-color.
+          CLEAR ls_cellcolour.
+
+          "  gs_final-zstatus = 'EXPIRES WITHIN 3 MONTHS'.
+
+          IF gs_final-zbusrela = 'ACTIVE'.
+            lv_count8 = lv_count8 + 1.
+          ENDIF.
+          MODIFY gt_final FROM gs_final  INDEX lv_index TRANSPORTING color zstatus.
+        ENDIF.
+      ENDIF.
+
+
+*   IF   gs_final-zcomp_card_ex IS NOT INITIAL.
+*       IF  gs_final-zcomp_card_ex GE sy-datum .
+*
+*          ls_cellcolour-fname = 'ZCOMP_CARD_EX'.
+*          ls_cellcolour-color-col = '7'.
+*          ls_cellcolour-color-int = '1'.
+*          ls_cellcolour-color-inv = '0'.                                                   " change by aaditya
+*          APPEND ls_cellcolour TO gs_final-color.
+*          CLEAR ls_cellcolour.
+**          gs_final-zstatus = 'EXPIRES WITHIN 3 MONTHS'.
+*          IF gs_final-zbusrela = 'ACTIVE'.
+*            lv_count8 = lv_count8 + 1.
+*          ENDIF.
+*          MODIFY gt_final FROM gs_final  INDEX lv_index TRANSPORTING color zstatus.
+**        ENDIF.
+*      ENDIF.
+*       ENDIF.
+
+      IF  gs_final-zcr_taxcard  IS INITIAL.
+        gs_final-zcr_taxcard = 'YES'.
+*        gv_active = gv_active + 1.
+        gs_final-zstatus = 'ACTIVE'.
+        MODIFY gt_final FROM gs_final INDEX lv_index TRANSPORTING zcr_taxcard zstatus .
+      ENDIF.
+
+*      IF  gs_final-zcr_expdate IS INITIAL AND gs_final-ztax_carddate IS INITIAL.
+      IF  gs_final-zcr_expdate IS INITIAL.
+        gs_final-zcr_taxcard = 'NO'.
+        gs_final-zstatus = 'EXPIRED'.
+        MODIFY gt_final FROM gs_final INDEX lv_index TRANSPORTING zcr_taxcard zstatus .
+      ENDIF.
+
+*     Calculating total Vendor(S)
+      IF gs_final-lifnr IS NOT INITIAL.
+        lv_totalven = lv_totalven + 1.
+      ENDIF.
+*     Calculating total Non Active vendor(S)
+      IF gs_final-zbusrela NE 'ACTIVE'.
+        lv_totalnven = lv_totalnven + 1.
+      ENDIF.
+*     Calculating total Active vendor(S)
+      IF gs_final-zbusrela EQ 'ACTIVE'.
+        lv_totalaven = lv_totalaven + 1.
+      ENDIF.
+
+      CLEAR gs_final.
+    ENDLOOP.
+    DATA : lv_lines TYPE string.
+
+*   calculating Qualified Vendor(s)
+    lv_count9  = REDUCE i( INIT x = 0 FOR wa IN gt_final WHERE ( zqualified = 'YES' ) NEXT x = x + 1 ).      "" change by avdhoot
+
+*   calculating Vendor Evaluation Expired
+    lv_count10 = REDUCE i( INIT x = 0 FOR wa IN gt_final WHERE ( vendor_st = 'EXPIRED' ) NEXT x = x + 1 ).
+*   calculating Vendor Evaluation about to Expire
+    lv_count11 = REDUCE i( INIT x = 0 FOR wa IN gt_final WHERE (  vendor_st = 'ABOUT TO EXPIRE' ) NEXT x = x + 1 ).
+*   calculating Disqualified Vendor(s)
+    lv_count12 = REDUCE i( INIT x = 0 FOR wa IN gt_final WHERE ( zqualified = 'NO'  ) NEXT x = x + 1 ). "" change by avdhoot
+  ENDIF.
+
+
+  IF lv_count1 NE 0.
+    SHIFT lv_count1 LEFT DELETING LEADING '0'.
+  ENDIF.
+  IF lv_count2 NE 0.
+    SHIFT lv_count2 LEFT DELETING LEADING '0'.
+  ENDIF.
+  IF lv_count3 NE 0.
+    SHIFT lv_count3 LEFT DELETING LEADING '0'.
+  ENDIF.
+  IF lv_count4 NE 0.
+    SHIFT lv_count4 LEFT DELETING LEADING '0'.
+  ENDIF.
+  IF lv_count5 NE 0.
+    SHIFT lv_count5 LEFT DELETING LEADING '0'.
+  ENDIF.
+*    IF lv_count6 NE 0.
+*    SHIFT lv_count6 LEFT DELETING LEADING '0'.
+*  ENDIF.
+  IF lv_count7 NE 0.
+    SHIFT lv_count7 LEFT DELETING LEADING '0'.
+  ENDIF.
+  IF lv_count8 NE 0.
+    SHIFT lv_count8 LEFT DELETING LEADING '0'.
+  ENDIF.
+
+  IF lv_count9 NE 0.
+    SHIFT lv_count9 LEFT DELETING LEADING '0'.
+  ENDIF.
+  IF lv_count10 NE 0.
+    SHIFT lv_count10 LEFT DELETING LEADING '0'.
+  ENDIF.
+  IF lv_count11 NE 0.
+    SHIFT lv_count11 LEFT DELETING LEADING '0'.
+  ENDIF.
+  IF lv_count12 NE 0.
+    SHIFT lv_count12 LEFT DELETING LEADING '0'.
+  ENDIF.
+  IF lv_totalven NE 0.
+    SHIFT lv_totalven LEFT DELETING LEADING '0'.
+  ENDIF.
+  IF lv_totalnven NE 0.
+    SHIFT lv_totalnven LEFT DELETING LEADING '0'.
+  ENDIF.
+  IF lv_totalaven NE 0.
+    SHIFT lv_totalaven LEFT DELETING LEADING '0'.
+  ENDIF.
+
+
+
+*  lv_count5 = lv_count1 + lv_count3 . " Adding total number of CR and Tax Card expired.
+
+  lv_count6 = lv_count2 + lv_count4 . " Adding total number of CR and Tax Card about to expired.
+
+**********************************   Add by Manikanta *********************
+  REFRESH gt_final2.
+  gt_final2 = gt_final.
+
+  DELETE gt_final2 WHERE zbusrela NE 'ACTIVE'.
+  DESCRIBE TABLE gt_final2 LINES gv_active.
+***************************************************************************
+  IF gt_final IS NOT INITIAL.
+    MOVE-CORRESPONDING gt_final TO lt_final.
+    DESCRIBE TABLE lt_final LINES gv_tactive.
+    gv_iactive = gv_tactive - gv_active.
+  ENDIF.
+
+******header Details
+* Header
+  w_head-typ = 'H'.
+  " 1) TYP: This heading tells the type of heading !) Header, 2) selection
+  " and 3) Action
+  w_head-info = 'Vendor Summary Report'.
+  " 2) INFO: It tells the Information heading
+  APPEND w_head TO t_head.
+  CLEAR w_head.
+
+* Header
+  w_head-typ = 'S'.
+*  w_head-info = 'Total Service(s) Contract No :'  && lv_count  .
+  SHIFT gv_tactive LEFT DELETING LEADING '0'.
+  SHIFT gv_active LEFT DELETING LEADING '0'.
+  SHIFT gv_iactive LEFT DELETING LEADING '0'.
+
+
+  CLEAR: gv_active, gv_iactive.
+
+*  DATA: lt_tab   TYPE REF TO cl_dd_table_element,
+*        ld_col1  TYPE REF TO cl_dd_area,
+*        ld_col2  TYPE REF TO cl_dd_area,
+*        ld_text  TYPE sdydo_text_element,
+*        ld_text2 TYPE sdydo_text_element,
+*        ld_text3 TYPE sdydo_text_element,
+*        ld_text4 TYPE sdydo_text_element,
+*        ld_text5 TYPE sdydo_text_element,
+*        ld_text6 TYPE sdydo_text_element.
+
+
+
+
+*  CONCATENATE 'Total Number of Vendor(s) : ' lv_totalven INTO  w_head-info SEPARATED BY space.
+*  APPEND w_head TO t_head.
+*  CLEAR w_head.
+*
+*  w_head-typ = 'S'.
+*  CONCATENATE 'Total Number of Active Vendor(s) : ' lv_totalaven INTO w_head-info SEPARATED BY space.
+*  APPEND w_head TO t_head.
+*  CLEAR w_head.
+*
+*  w_head-typ = 'S'.
+*  CONCATENATE ' Total Number of Non Active Vendor(s) : ' lv_totalnven INTO w_head-info SEPARATED BY space.
+*  APPEND w_head TO t_head.
+*  CLEAR w_head."****************** End ***********
+*
+*  w_head-typ = 'S'.
+*  CONCATENATE ' Total Number of CR & Tax Card Expired : ' lv_count5 INTO w_head-info SEPARATED BY space.
+*  APPEND w_head TO t_head.
+*  CLEAR w_head."****************** End ***********
+*
+*  w_head-typ = 'S'.
+*  CONCATENATE ' Total Number of CR & Tax Card about to Expire : ' lv_count6 INTO w_head-info SEPARATED BY space.
+*  APPEND w_head TO t_head.
+*  CLEAR w_head."****************** End ***********
+*
+*  w_head-typ = 'S'.
+*  CONCATENATE ' Total Number of Computer Card Expired : ' lv_count7 INTO w_head-info SEPARATED BY space.
+*  APPEND w_head TO t_head.
+*  CLEAR w_head."****************** End ***********
+*
+*  w_head-typ = 'S'.
+*  CONCATENATE ' Total Number of Computer Card about to Expire : ' lv_count8 INTO w_head-info SEPARATED BY space.
+*  APPEND w_head TO t_head.
+*  CLEAR w_head."****************** End ***********
+*
+*  w_head-typ = 'S'.
+*  CONCATENATE ' Total Number of Qualified Vendor(s) : ' lv_count9 INTO w_head-info SEPARATED BY space.
+*  APPEND w_head TO t_head.
+*  CLEAR w_head."****************** End ***********
+*
+*  w_head-typ = 'S'.
+*  CONCATENATE ' Total Number of Disqualified Vendor(s) : ' lv_count12 INTO w_head-info SEPARATED BY space.
+*  APPEND w_head TO t_head.
+*  CLEAR w_head."****************** End ***********
+*
+*  w_head-typ = 'S'.
+*  CONCATENATE ' Total Number of Vendor Evaluation Expired : ' lv_count10 INTO w_head-info SEPARATED BY space.
+*  APPEND w_head TO t_head.
+*  CLEAR w_head."****************** End ***********
+*
+*  w_head-typ = 'S'.
+*  CONCATENATE ' Total Number of Vendor Evaluation about to Expire : ' lv_count11 INTO w_head-info SEPARATED BY space.
+*  APPEND w_head TO t_head.
+*  CLEAR w_head."****************** End ***********
+
+  PERFORM display_data.
+
+ENDFORM.
+
+FORM display_data .
+
+*  DELETE gt_final WHERE lifnr = '1145'.  " Added by Jisha 21.07.2022
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+    EXPORTING
+      i_callback_program          = sy-repid
+      i_callback_pf_status_set    = 'ZSTANDARD9'
+      i_callback_user_command     = 'USER_COMMAND'
+*     i_callback_top_of_page      = 'TOP-OF-PAGE'                    "'TOP_OF_PAGE_CALLBACK'"'TOP_PAGE_SECTION_CONTROL'            "'TOP-OF-PAGE'
+      i_callback_html_top_of_page = 'TOP-OF-PAGE'
+*     I_CALLBACK_HTML_END_OF_LIST = ' '
+*     I_STRUCTURE_NAME            =
+*     I_BACKGROUND_ID             = ' '
+*     I_GRID_TITLE                =
+*     I_GRID_SETTINGS             =
+      is_layout                   = is_layout
+      it_fieldcat                 = it_fcat
+*     IT_EXCLUDING                =
+*     IT_SPECIAL_GROUPS           =
+*     IT_SORT                     =
+*     IT_FILTER                   =
+*     IS_SEL_HIDE                 =
+*     I_DEFAULT                   = 'X'
+*     I_SAVE                      = ' '
+    TABLES
+      t_outtab                    = gt_final
+    EXCEPTIONS
+      program_error               = 1
+      OTHERS                      = 2.
+  IF sy-subrc <> 0.
+* Implement suitable error handling here
+  ENDIF.
+
+
+ENDFORM.
+
+FORM user_command USING r_ucomm LIKE sy-ucomm
+                                  rs_selfield TYPE slis_selfield.
+  CASE r_ucomm.
+    WHEN '&IC1'.
+      IF rs_selfield-fieldname = 'LIFNR'.
+
+        READ TABLE gt_final INTO gs_final INDEX rs_selfield-tabindex.
+
+        CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT' "added on 09.12.2020.
+          EXPORTING
+            input  = gs_final-lifnr
+          IMPORTING
+            output = gs_final-lifnr.
+
+
+        SET PARAMETER ID 'LIF' FIELD gs_final-lifnr.
+        SET PARAMETER ID 'BUK' FIELD gv_bukrs.
+        SET PARAMETER ID 'EKO' FIELD gs_final-ekorg.
+        CALL TRANSACTION 'XK03' AND SKIP FIRST SCREEN .
+      ENDIF.
+      CLEAR:rs_selfield.
+  ENDCASE.
+ENDFORM.
+FORM zstandard9 USING rt_extab TYPE slis_t_extab.
+  SET PF-STATUS 'ZSTANDARD9'.
+ENDFORM.
+
+FORM fcat  USING    col TYPE slis_fieldcat_alv-col_pos
+                    fieldname TYPE slis_fieldcat_alv-fieldname
+                    des   TYPE slis_fieldcat_alv-seltext_l
+                    spot  TYPE slis_fieldcat_alv-hotspot.
+
+
+
+* ++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+  wa_fcat-col_pos = col.
+
+  IF  fieldname = 'VENDOR_ST'.
+    wa_fcat-outputlen = '30'.
+    wa_fcat-lowercase = 'X'.
+
+  ENDIF.
+  wa_fcat-tabname = 'GT_FINAL'.
+  wa_fcat-fieldname = fieldname.
+  wa_fcat-seltext_l = des.
+  wa_fcat-hotspot  = spot.
+
+* Endif.
+*          wa_fcat-col_pos = 12.
+*          wa_fcat-fieldname = 'TYpe'.
+*          wa_fcat-outputlen = 15.
+*          wa_fcat-key = ' '.
+
+  APPEND wa_fcat TO it_fcat.
+  CLEAR: wa_fcat.
+*++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
+**if  fieldname = 'VENDOR_ST'.
+***    wa_fcat-outputlen = '30'.
+**    wa_fcat-lowercase = 'X'.
+**  wa_fcat-col_pos = 1.
+**  wa_fcat-fieldname = 'LIFNR'.
+**  wa_fcat-seltext_m = 'Vender Code'.
+***  wa_fcat-outputlen = '15'.
+**  wa_fcat-lowercase = 'X'.
+**APPEND wa_fcat TO it_fcat.
+**  CLEAR: wa_fcat.
+**else.
+**  wa_fcat-col_pos = 2.
+**  wa_fcat-fieldname = 'NAME'.
+**  wa_fcat-seltext_m = 'Vender Name'.
+***  wa_fcat-outputlen = '15'.
+**  wa_fcat-lowercase = 'X'.
+**APPEND wa_fcat TO it_fcat.
+**  CLEAR: wa_fcat.
+**ENDIF.
+**  wa_fcat-col_pos = 3.
+**  wa_fcat-fieldname = 'Remark'.
+**  wa_fcat-seltext_m = 'Contact1'.
+***  wa_fcat-outputlen = '15'.
+**  wa_fcat-lowercase = 'X'.
+**APPEND wa_fcat TO it_fcat.
+**  CLEAR: wa_fcat.
+**
+**   wa_fcat-col_pos = 4.
+**  wa_fcat-fieldname = 'Contact2'.
+**  wa_fcat-seltext_m = 'Contact2'.
+***  wa_fcat-outputlen = '15'.
+**  wa_fcat-lowercase = 'X'.
+**APPEND wa_fcat TO it_fcat.
+**  CLEAR: wa_fcat.
+**
+**   wa_fcat-col_pos = 5.
+**  wa_fcat-fieldname = 'Contact3'.
+**  wa_fcat-seltext_m = 'Contact3'.
+***  wa_fcat-outputlen = '15'.
+**  wa_fcat-lowercase = 'X'.
+**APPEND wa_fcat TO it_fcat.
+**  CLEAR: wa_fcat.
+**
+**   wa_fcat-col_pos = 6.
+**  wa_fcat-fieldname = 'AddR1'.
+**  wa_fcat-seltext_m = 'Address1'.
+***  wa_fcat-outputlen = '15'.
+**  wa_fcat-lowercase = 'X'.
+**APPEND wa_fcat TO it_fcat.
+**  CLEAR: wa_fcat.
+*
+
+ENDFORM.
+
+
+FORM top-of-page  USING r_top TYPE REF TO cl_dd_document.
+*
+  DATA: lt_tab                     TYPE REF TO cl_dd_table_element,
+        ld_col1                    TYPE REF TO cl_dd_area,
+        ld_col2                    TYPE REF TO cl_dd_area,
+        ld_col3                    TYPE REF TO cl_dd_area,
+        ld_col4                    TYPE REF TO cl_dd_area,
+        ld_col_text                TYPE sdydo_text_element,
+        ld_col_text2               TYPE sdydo_text_element,
+        ld_col_text3               TYPE sdydo_text_element,
+        ld_col_text4               TYPE sdydo_text_element,
+        ld_vendor_total            TYPE sdydo_text_element,
+        ld_vendor_total_count      TYPE sdydo_text_element,
+        ld_act_vendor_txt          TYPE sdydo_text_element,
+        ld_act_vendor_count        TYPE sdydo_text_element,
+        ld_nact_vendor_txt         TYPE sdydo_text_element,
+        ld_nact_vendor_count       TYPE sdydo_text_element,
+        ld_cr_t_exp_txt            TYPE sdydo_text_element,
+        ld_cr_t_exp_count          TYPE sdydo_text_element,
+        ld_cr_t_expig_txt          TYPE sdydo_text_element,
+        ld_cr_t_expig_count        TYPE sdydo_text_element,
+        ld_cc_exp_txt              TYPE sdydo_text_element,
+        ld_cc_exp_count            TYPE sdydo_text_element,
+        ld_cc_expig_txt            TYPE sdydo_text_element,
+        ld_cc_expig_count          TYPE sdydo_text_element,
+        ld_qalif_vendor_txt        TYPE sdydo_text_element,
+        ld_qalif_vendor_count      TYPE sdydo_text_element,
+        ld_dqalif_vendor_txt       TYPE sdydo_text_element,
+        ld_dqalif_vendor_count     TYPE sdydo_text_element,
+        ld_vendor_eval_exp_txt     TYPE sdydo_text_element,
+        ld_vendor_eval_exp_count   TYPE sdydo_text_element,
+        ld_vendor_eval_expig_txt   TYPE sdydo_text_element,
+        ld_vendor_eval_expig_count TYPE sdydo_text_element.
+
+*  FORM top_of_page_split USING r_top TYPE REF TO cl_dd_document.
+  DATA: s_tab  TYPE sdydo_text_table,
+        c_area TYPE REF TO cl_dd_area,
+        text   TYPE sdydo_text_element.
+  """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+  " Adding Column for report Heading "Vendor Summary Report"
+**  DATA : ld_header_text TYPE sdydo_text_element.
+**   DATA : ld_col_h TYPE REF TO cl_dd_area.
+**
+**   CALL METHOD r_top->add_table
+**    EXPORTING
+**      no_of_columns = 1
+**      border        = '1'
+**    IMPORTING
+**      table         = lt_tab.
+**
+**  CALL METHOD lt_tab->add_column
+**    EXPORTING
+**      width  = '100%'
+**    IMPORTING
+**      column = ld_col_h.
+**
+**    ld_header_text = 'Vendor Summary Report'.
+**
+**    CALL METHOD ld_col_h->add_text
+**    EXPORTING
+**      text         = ld_header_text
+**      sap_color    = cl_dd_area=>list_background_int
+**      sap_emphasis = 'STRONG'.
+
+  """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+  CALL METHOD r_top->add_table
+    EXPORTING
+      no_of_columns = 4
+      border        = '1'
+    IMPORTING
+      table         = lt_tab.
+
+  CALL METHOD lt_tab->add_column
+    EXPORTING
+      width  = '25%'
+    IMPORTING
+      column = ld_col1.
+
+  CALL METHOD lt_tab->add_column
+    EXPORTING
+      width  = '10%'
+    IMPORTING
+      column = ld_col2.
+  CALL METHOD lt_tab->add_column
+    EXPORTING
+      width  = '25%'
+    IMPORTING
+      column = ld_col3.
+  CALL METHOD lt_tab->add_column
+    EXPORTING
+      width  = '10%'
+    IMPORTING
+      column = ld_col4.
+
+  ld_col_text  = 'Category'.
+  ld_col_text2 = 'Count'.
+  ld_col_text3 = 'Category'.
+  ld_col_text4 = 'Count'.
+  ld_vendor_total = 'Total Vendors'.
+  ld_vendor_total_count     = lv_totalven .
+  ld_act_vendor_txt    = 'Active Vendor(s)' .
+  ld_act_vendor_count  = lv_totalaven.
+  ld_nact_vendor_txt   = 'Non Active Vendor(s)'.
+  ld_nact_vendor_count = lv_totalnven.
+  ld_cr_t_exp_txt      = 'CR and Tax Card Expired'.
+  ld_cr_t_exp_count   = lv_count5.
+  ld_cr_t_expig_txt   = 'CR and Tax Card About to Expired'.
+  ld_cr_t_expig_count = lv_count6.
+  ld_cc_exp_txt       = 'Computer Card Expired'.
+  ld_cc_exp_count     = lv_count7.
+  ld_cc_expig_txt     = 'Computer Card About to Expired'.
+  ld_cc_expig_count   = lv_count8.
+  ld_qalif_vendor_txt = 'Qualified Vendor(s)'.
+  ld_qalif_vendor_count  = lv_count9.
+  ld_dqalif_vendor_txt   = 'Disqualified Vendor(s)'.
+  ld_dqalif_vendor_count = lv_count12.
+  ld_vendor_eval_exp_txt = 'Vendor Evaluation Expired'.
+  ld_vendor_eval_exp_count = lv_count10.
+  ld_vendor_eval_expig_txt = 'Vedor Evaluation About to Expired'.
+  ld_vendor_eval_expig_count = lv_count11 .
+
+**************Header Column block******************
+  "header row
+  CALL METHOD ld_col1->add_text
+    EXPORTING
+      text         = ld_col_text
+      sap_color    = cl_dd_area=>list_background_int
+      sap_emphasis = 'STRONG'.
+
+  CALL METHOD ld_col2->add_text
+    EXPORTING
+      text         = ld_col_text2
+      sap_color    = cl_dd_area=>list_background_int
+      sap_emphasis = 'STRONG'.
+
+  CALL METHOD ld_col3->add_text
+    EXPORTING
+      text         = ld_col_text3
+      sap_color    = cl_dd_area=>list_background_int
+      sap_emphasis = 'STRONG'.
+
+  CALL METHOD ld_col4->add_text
+    EXPORTING
+      text         = ld_col_text4
+      sap_color    = cl_dd_area=>list_background_int
+      sap_emphasis = 'STRONG'.
+  CALL METHOD lt_tab->new_row.
+
+************** End Of Header Column block******************
+  "1st Row
+  CALL METHOD ld_col1->add_text
+    EXPORTING
+      text      = ld_vendor_total
+      sap_color = cl_dd_area=>list_background_int.
+  CALL METHOD ld_col2->add_text
+    EXPORTING
+      text      = ld_vendor_total_count
+      sap_color = cl_dd_area=>list_background_int.
+
+  CALL METHOD lt_tab->new_row.
+************************************************************
+  "2nd Row
+  CALL METHOD ld_col1->add_text
+    EXPORTING
+      text      = ld_act_vendor_txt
+      sap_color = cl_dd_area=>list_background_int.
+  CALL METHOD ld_col2->add_text
+    EXPORTING
+      text      = ld_act_vendor_count
+      sap_color = cl_dd_area=>list_background_int.
+  CALL METHOD ld_col3->add_text
+    EXPORTING
+      text      = ld_nact_vendor_txt
+      sap_color = cl_dd_area=>list_background_int.
+  CALL METHOD ld_col4->add_text
+    EXPORTING
+      text      = ld_nact_vendor_count
+      sap_color = cl_dd_area=>list_background_int.
+  CALL METHOD lt_tab->new_row.
+************************************************************
+  "3rd Row
+  CALL METHOD ld_col1->add_text
+    EXPORTING
+      text      = ld_cr_t_exp_txt
+      sap_color = cl_dd_area=>list_background_int.
+  CALL METHOD ld_col2->add_text
+    EXPORTING
+      text      = ld_cr_t_exp_count
+      sap_color = cl_dd_area=>list_background_int.
+  CALL METHOD ld_col3->add_text
+    EXPORTING
+      text      = ld_cr_t_expig_txt
+      sap_color = cl_dd_area=>list_background_int.
+  CALL METHOD ld_col4->add_text
+    EXPORTING
+      text      = ld_cr_t_expig_count
+      sap_color = cl_dd_area=>list_background_int.
+  CALL METHOD lt_tab->new_row.
+***************************************************************
+  "4th Row
+  CALL METHOD ld_col1->add_text
+    EXPORTING
+      text      = ld_cc_exp_txt
+      sap_color = cl_dd_area=>list_background_int.
+  CALL METHOD ld_col2->add_text
+    EXPORTING
+      text      = ld_cc_exp_count
+      sap_color = cl_dd_area=>list_background_int.
+  CALL METHOD ld_col3->add_text
+    EXPORTING
+      text      = ld_cc_expig_txt
+      sap_color = cl_dd_area=>list_background_int.
+  CALL METHOD ld_col4->add_text
+    EXPORTING
+      text      = ld_cc_expig_count
+      sap_color = cl_dd_area=>list_background_int.
+  CALL METHOD lt_tab->new_row.
+****************************************************************
+  "5th Row
+  CALL METHOD ld_col1->add_text
+    EXPORTING
+      text      = ld_qalif_vendor_txt
+      sap_color = cl_dd_area=>list_background_int.
+  CALL METHOD ld_col2->add_text
+    EXPORTING
+      text      = ld_qalif_vendor_count
+      sap_color = cl_dd_area=>list_background_int.
+  CALL METHOD ld_col3->add_text
+    EXPORTING
+      text      = ld_dqalif_vendor_txt
+      sap_color = cl_dd_area=>list_background_int.
+  CALL METHOD ld_col4->add_text
+    EXPORTING
+      text      = ld_dqalif_vendor_count
+      sap_color = cl_dd_area=>list_background_int.
+  CALL METHOD lt_tab->new_row.
+****************************************************************
+  "6th Row
+  CALL METHOD ld_col1->add_text
+    EXPORTING
+      text      = ld_vendor_eval_exp_txt
+      sap_color = cl_dd_area=>list_background_int.
+  CALL METHOD ld_col2->add_text
+    EXPORTING
+      text      = ld_vendor_eval_exp_count
+      sap_color = cl_dd_area=>list_background_int.
+  CALL METHOD ld_col3->add_text
+    EXPORTING
+      text      = ld_vendor_eval_expig_txt
+      sap_color = cl_dd_area=>list_background_int.
+  CALL METHOD ld_col4->add_text
+    EXPORTING
+      text      = ld_vendor_eval_expig_count
+      sap_color = cl_dd_area=>list_background_int.
+
+****************************************************************
+*  CALL METHOD lt_tab->new_row.
+
+ENDFORM."TOP_OF_PAGE_SPLIT
+
+FORM send_mail .
+
+  CLEAR : lv_addr,lv_subject,ls_text.
+  FREE send_request.
+  REFRESH text.
+
+  REFRESH : t_html_x.
+
+  CLEAR : wa_header1.
+
+
+*********Mail Subject
+  CONCATENATE 'Request to update CR & TAX card' sy-datum+0(4)'Vendor' gs_table-lifnr INTO lv_subject SEPARATED BY space.
+* -Title of the Display
+
+  wa_header1-line = 'Dear Sir/Madam,' .
+  APPEND wa_header1 TO t_html_x.
+  CLEAR wa_header1.
+
+
+  wa_header1-line = '<br><br>' .
+  APPEND wa_header1 TO t_html_x.
+  CLEAR wa_header1.
+
+  wa_header1-line ='Please be informed that we have noticed that your legal documents are expired within our system, Please send your valid CR ( English & Arabic) & Tax card to update in our vendor data base asap.'.
+  APPEND wa_header1 TO t_html_x.
+  CLEAR wa_header1.
+
+  wa_header1-line = '<br><br>' .
+  APPEND wa_header1 TO t_html_x.
+  CLEAR wa_header1.
+
+  wa_header1-line ='This is required to do the vendor evaluation and continuous business.'.
+  APPEND wa_header1 TO t_html_x.
+  CLEAR wa_header1.
+
+
+**********************************************************************
+
+  TRY.
+      send_request = cl_bcs=>create_persistent( ).
+
+      document = cl_document_bcs=>create_document(
+                     i_type       = 'HTM'
+                     i_text       = t_html_x[]
+                     i_language   = sy-langu
+                     i_subject    = lv_subject ).
+
+      send_request->set_document( document ).
+      "***********************************Sender *************************************
+      sender = cl_sapuser_bcs=>create( sy-uname ).
+
+      CALL METHOD send_request->set_sender
+        EXPORTING
+          i_sender = sender.
+      "*******************************TO Mail******************************************
+      CLEAR : lv_mail.
+      CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+        EXPORTING
+          input  = gs_table-lifnr
+        IMPORTING
+          output = gs_table-lifnr.
+
+      SELECT SINGLE adrnr FROM lfa1 INTO @DATA(lv_adrnr) WHERE lifnr = @gs_table-lifnr.
+      IF sy-subrc = 0.
+        SELECT SINGLE smtp_addr FROM adr6 INTO @DATA(lv_addr1) WHERE addrnumber = @lv_adrnr.
+        IF sy-subrc = 0.
+          lv_mail = lv_addr1.
+        ENDIF.
+      ENDIF.
+
+      CLEAR lv_addr.
+      lv_addr = lv_mail.
+*      lv_addr = 'testto@gmail.com'.
+      IF lv_addr IS NOT INITIAL.
+        recipient = cl_cam_address_bcs=>create_internet_address( lv_addr ).
+
+        CALL METHOD send_request->add_recipient
+          EXPORTING
+            i_recipient = recipient
+            i_express   = 'X'.
+*        send_request->set_status_attributes( i_requested_status = 'E'  ).
+      ENDIF.
+
+**********""""""""""""""""""""""""""""""CC Mail""""""""""""""""""""""""""""""""""""""""""""""
+*
+      DATA : lv_user TYPE xubname,
+             address TYPE  bapiaddr3,
+             return  TYPE TABLE OF  bapiret2.
+
+      SELECT zuser FROM zmm_cr_tax_card INTO TABLE @DATA(lt_user).
+      IF sy-subrc = 0.
+        LOOP AT lt_user INTO DATA(ls_user).
+          CLEAR : lv_user,address.
+          REFRESH : return.
+          lv_user = ls_user-zuser.
+
+          CALL FUNCTION 'BAPI_USER_GET_DETAIL'
+            EXPORTING
+              username = lv_user
+*             CACHE_RESULTS        = 'X'
+            IMPORTING
+              address  = address
+            TABLES
+              return   = return.
+          CLEAR : lv_addr.
+          lv_addr = address-e_mail.
+*
+          recipient = cl_cam_address_bcs=>create_internet_address( lv_addr ).
+          CALL METHOD send_request->add_recipient
+            EXPORTING
+              i_recipient = recipient
+              i_express   = 'X'
+              i_copy      = 'X'.
+
+          CLEAR : lv_addr.
+
+        ENDLOOP.
+      ENDIF.
+
+      CALL METHOD send_request->send(
+        EXPORTING
+          i_with_error_screen = 'X'
+        RECEIVING
+          result              = sent_to_all ).
+      COMMIT WORK.
+    CATCH cx_bcs INTO gr_bcs_exception.
+      WRITE: 'error' ,
+       gr_bcs_exception->error_type.
+  ENDTRY.
+
+ENDFORM.
