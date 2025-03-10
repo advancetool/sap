@@ -1,0 +1,1056 @@
+*&---------------------------------------------------------------------*
+*& Include          ZMM_RPT_NOTIFICATION_F01
+*&---------------------------------------------------------------------*
+
+** Get CR Computer Card Tax Card Expiry Notification Details
+FORM getexpirynofitication.
+  SELECT * FROM zcr_adbp
+    INTO CORRESPONDING FIELDS OF TABLE gt_crcomptaxinfo
+          WHERE zcr_adbp~zvencode IN s_vendor AND
+                zcr_adbp~zbusrela IN s_bus.
+  IF sy-subrc NE 0.
+    MESSAGE 'No data found for the given selection' TYPE 'S'.
+    EXIT.
+  ENDIF.
+  SORT gt_crcomptaxinfo BY zvencode ASCENDING.
+  DELETE ADJACENT DUPLICATES FROM gt_crcomptaxinfo COMPARING zvencode.    "
+
+  SELECT * FROM ztb_ven_eva
+    INTO CORRESPONDING FIELDS OF TABLE gt_venexpiryinfo
+    FOR ALL ENTRIES IN gt_crcomptaxinfo
+    WHERE lifnr = gt_crcomptaxinfo-zvencode.
+
+  IF sy-subrc IS INITIAL.
+    DELETE gt_venexpiryinfo WHERE del EQ 'X'.
+    SORT gt_venexpiryinfo BY lifnr ASCENDING seq DESCENDING.
+    DELETE ADJACENT DUPLICATES FROM gt_venexpiryinfo COMPARING lifnr.   " Anil
+  ENDIF.
+
+  SELECT * FROM zdepartment_id
+    INTO CORRESPONDING FIELDS OF TABLE gt_departmentinfo.
+  IF sy-subrc IS INITIAL.
+    SORT gt_departmentinfo BY dept.
+  ENDIF.
+
+  SELECT a~partner, a~bpkind, b~text40 FROM but000 AS a
+    INNER JOIN tb004t AS b
+    ON a~bpkind = b~bpkind
+    INTO CORRESPONDING FIELDS OF TABLE @gt_vendetails
+    FOR ALL ENTRIES IN @gt_crcomptaxinfo
+    WHERE a~partner = @gt_crcomptaxinfo-zvencode AND b~spras = 'E'.
+  IF sy-subrc IS INITIAL.
+    SORT gt_vendetails BY partner.
+    DELETE ADJACENT DUPLICATES FROM gt_vendetails COMPARING partner.      " Commited by Anil
+  ENDIF.
+
+  SELECT a~partner, b~smtp_addr FROM but020 AS a
+    INNER JOIN adr6 AS b
+    ON a~addrnumber = b~addrnumber
+    INTO CORRESPONDING FIELDS OF TABLE @gt_venemail
+    FOR ALL ENTRIES IN @gt_crcomptaxinfo
+    WHERE a~partner = @gt_crcomptaxinfo-zvencode.
+  IF sy-subrc IS INITIAL.
+    SORT gt_venemail BY partner.
+  ENDIF.
+
+  LOOP AT gt_crcomptaxinfo ASSIGNING <fs_crcomptaxinfo>.
+    MOVE: <fs_crcomptaxinfo>-zvencode TO gwa_notifications-zvencode,
+          <fs_crcomptaxinfo>-zvendorname TO gwa_notifications-zvendorname,
+          <fs_crcomptaxinfo>-zbusrela TO gwa_notifications-zbusrela,
+          <fs_crcomptaxinfo>-zcr_taxcard TO gwa_notifications-zcr_taxcard,
+          <fs_crcomptaxinfo>-zcr_expdate TO gwa_notifications-zcr_expdate,
+          <fs_crcomptaxinfo>-ztax_carddate TO gwa_notifications-ztax_carddate,
+          <fs_crcomptaxinfo>-zcomp_card_ex TO gwa_notifications-zcomp_card_ex,
+          <fs_crcomptaxinfo>-znexreview_date TO gwa_notifications-znexreview_date.
+
+    LOOP AT gt_vendetails ASSIGNING <fs_vendordetails> WHERE partner = <fs_crcomptaxinfo>-zvencode.
+      MOVE: <fs_vendordetails>-text40 TO gwa_notifications-type.
+      EXIT.
+    ENDLOOP.
+    LOOP AT gt_venemail ASSIGNING <fs_venemail> WHERE partner = <fs_crcomptaxinfo>-zvencode.
+      MOVE: <fs_venemail>-smtp_addr TO gwa_notifications-smtp_addr.
+      EXIT.
+    ENDLOOP.
+
+    "Logic to identify whether to send CR Expiry Date Notification
+    IF <fs_crcomptaxinfo>-zcr_expdate IS NOT INITIAL.
+      lv_days_diff = <fs_crcomptaxinfo>-zcr_expdate - sy-datum.
+      IF p_chk1 IS NOT INITIAL AND lv_days_diff = p_cr_1.
+        gwa_notifications-crtaxfirstnotif = 'X'.
+        CONCATENATE lv_notifinfogrp1 TEXT-av1 p_cr_1 ';' INTO lv_notifinfogrp1 SEPARATED BY space.
+      ENDIF.
+      IF p_chk2 IS NOT INITIAL AND lv_days_diff = p_cr_2.
+        gwa_notifications-crtaxremnotif = 'X'.
+        CONCATENATE lv_notifinfogrp1 TEXT-av1 p_cr_2 ';' INTO lv_notifinfogrp1 SEPARATED BY space.
+      ENDIF.
+      IF p_chk3 IS NOT INITIAL AND lv_days_diff = p_cr_3.
+        gwa_notifications-crtaxremnotif = 'X'.
+        CONCATENATE lv_notifinfogrp1 TEXT-av1 p_cr_3 ';' INTO lv_notifinfogrp1 SEPARATED BY space.
+      ENDIF.
+      IF p_chk4 IS NOT INITIAL AND lv_days_diff <= p_cr_4.
+        gwa_notifications-crtaxremnotif = 'X'.
+        CONCATENATE lv_notifinfogrp1 TEXT-av2 ';' INTO lv_notifinfogrp1 SEPARATED BY space.
+      ENDIF.
+    ELSE.
+      IF p_chk14 IS NOT INITIAL.
+        gwa_notifications-crtaxremnotif = 'X'.
+        CONCATENATE lv_notifinfogrp2 TEXT-av7 ';' INTO lv_notifinfogrp2 SEPARATED BY space.
+      ENDIF.
+    ENDIF.
+
+    "Logic to identify whether to send Taxcard Expiry Date Notification
+    IF <fs_crcomptaxinfo>-ztax_carddate IS NOT INITIAL.
+      lv_days_diff = <fs_crcomptaxinfo>-ztax_carddate - sy-datum.
+      IF p_chk5 IS NOT INITIAL AND lv_days_diff = p_tax_1.
+        gwa_notifications-crtaxfirstnotif = 'X'.
+        CONCATENATE lv_notifinfogrp1 TEXT-av3 p_tax_1 ';' INTO lv_notifinfogrp1 SEPARATED BY space.
+      ENDIF.
+      IF p_chk6 IS NOT INITIAL AND lv_days_diff = p_tax_2.
+        gwa_notifications-crtaxremnotif = 'X'.
+        CONCATENATE lv_notifinfogrp1 TEXT-av3 p_tax_2 ';' INTO lv_notifinfogrp1 SEPARATED BY space.
+      ENDIF.
+      IF p_chk7 IS NOT INITIAL AND lv_days_diff = p_tax_3.
+        gwa_notifications-crtaxremnotif = 'X'.
+        CONCATENATE lv_notifinfogrp1 TEXT-av3 p_tax_3';' INTO lv_notifinfogrp1 SEPARATED BY space.
+      ENDIF.
+      IF p_chk8 IS NOT INITIAL AND lv_days_diff <= p_tax_4.
+        gwa_notifications-crtaxremnotif = 'X'.
+        CONCATENATE lv_notifinfogrp1 TEXT-av4 ';' INTO lv_notifinfogrp1 SEPARATED BY space.
+      ENDIF.
+    ELSE.
+      IF p_chk14 IS NOT INITIAL.
+        gwa_notifications-crtaxremnotif = 'X'.
+        CONCATENATE lv_notifinfogrp2 TEXT-av8 ';' INTO lv_notifinfogrp2 SEPARATED BY space.
+      ENDIF.
+    ENDIF.
+
+    "Logic to identify whether to send ComputerCard Expiry Date Notification
+    IF <fs_crcomptaxinfo>-zcomp_card_ex IS NOT INITIAL.
+      lv_days_diff = <fs_crcomptaxinfo>-zcomp_card_ex - sy-datum.
+      IF p_chk9 IS NOT INITIAL AND lv_days_diff = p_comp_1.
+        gwa_notifications-crtaxfirstnotif = 'X'.
+        CONCATENATE lv_notifinfogrp1 TEXT-av5 p_comp_1 ';' INTO lv_notifinfogrp1 SEPARATED BY space.
+      ENDIF.
+      IF p_chk10 IS NOT INITIAL AND lv_days_diff = p_comp_2.
+        gwa_notifications-crtaxremnotif = 'X'.
+        CONCATENATE lv_notifinfogrp1 TEXT-av5 p_comp_2 ';' INTO lv_notifinfogrp1 SEPARATED BY space.
+      ENDIF.
+      IF p_chk11 IS NOT INITIAL AND lv_days_diff = p_comp_3.
+        gwa_notifications-crtaxremnotif = 'X'.
+        CONCATENATE lv_notifinfogrp1 TEXT-av5 p_comp_3 ';' INTO lv_notifinfogrp1 SEPARATED BY space.
+      ENDIF.
+      IF p_chk12 IS NOT INITIAL AND lv_days_diff <= p_comp_4.
+        gwa_notifications-crtaxremnotif = 'X'.
+        CONCATENATE lv_notifinfogrp1 TEXT-av6 ';' INTO lv_notifinfogrp1 SEPARATED BY space.
+      ENDIF.
+    ELSE.
+      IF p_chk14 IS NOT INITIAL.
+        gwa_notifications-crtaxremnotif = 'X'.
+        CONCATENATE lv_notifinfogrp2 TEXT-av9 ';' INTO lv_notifinfogrp2 SEPARATED BY space.
+      ENDIF.
+    ENDIF.
+    gwa_notifications-notifinfogrp1 = lv_notifinfogrp1.
+    gwa_notifications-notifinfogrp2 = lv_notifinfogrp2.
+
+    "Logic to identify whether to send Vendor Evaluation not completed Notification
+    LOOP AT gt_venexpiryinfo ASSIGNING <fs_venevcompinfo>
+      WHERE lifnr = <fs_crcomptaxinfo>-zvencode AND
+      "zyear1 = lv_current_year AND
+      comp_dt IS INITIAL AND
+      del IS INITIAL.
+
+      IF <fs_venevcompinfo>-submit IS INITIAL.
+        MOVE: 'PROCUREMENT' TO gwa_notifications-ekgrp1,
+              'PROCUREMENT'  TO gwa_notifications-desc1,
+             <fs_venevcompinfo>-zdate1 TO gwa_notifications-assignedate.
+      ELSEIF <fs_venevcompinfo>-usr2 IS INITIAL AND <fs_venevcompinfo>-submit IS NOT INITIAL.
+        MOVE: 'WAREHOUSE' TO gwa_notifications-ekgrp1,
+              'WAREHOUSE'  TO gwa_notifications-desc1,
+             <fs_venevcompinfo>-zdate1 TO gwa_notifications-assignedate.
+      ELSEIF <fs_venevcompinfo>-usr3 IS INITIAL AND <fs_venevcompinfo>-usr2 IS NOT INITIAL.
+        MOVE: <fs_venevcompinfo>-ekgrp1 TO gwa_notifications-ekgrp1,
+              <fs_venevcompinfo>-desc1  TO gwa_notifications-desc1,
+             <fs_venevcompinfo>-zdate2 TO gwa_notifications-assignedate.
+      ELSEIF <fs_venevcompinfo>-usr4 IS INITIAL AND <fs_venevcompinfo>-usr3 IS NOT INITIAL.
+        MOVE: 'ACCOUNTING' TO gwa_notifications-ekgrp1,
+              'ACCOUNTING'  TO gwa_notifications-desc1,
+             <fs_venevcompinfo>-zdate3 TO gwa_notifications-assignedate.
+      ELSEIF <fs_venevcompinfo>-usr5 IS INITIAL AND <fs_venevcompinfo>-usr4 IS NOT INITIAL.
+        MOVE: 'EHS' TO gwa_notifications-ekgrp1,
+              'EHS'  TO gwa_notifications-desc1,
+             <fs_venevcompinfo>-zdate4 TO gwa_notifications-assignedate.
+      ENDIF.
+      MOVE: <fs_venevcompinfo>-ekgrp1 TO gwa_notifications-ownsekgrp1,
+            <fs_venevcompinfo>-desc1 TO gwa_notifications-ownsdesc1,
+           <fs_venevcompinfo>-zdate1 TO gwa_notifications-createddate.
+
+      MOVE: <fs_venevcompinfo>-zyear1 TO gwa_notifications-zyear1,
+           <fs_venevcompinfo>-seq TO gwa_notifications-seq,
+
+           <fs_venevcompinfo>-submit TO gwa_notifications-submit,
+           <fs_venevcompinfo>-del TO gwa_notifications-del,
+           <fs_venevcompinfo>-comp_dt TO gwa_notifications-comp_dt.
+
+      lv_days_diff = sy-datum - gwa_notifications-assignedate.
+      IF p_chk15 IS NOT INITIAL AND lv_days_diff = p_15.
+        gwa_notifications-evastatus = 'Vendor Evaluation Not Completed'.
+        gwa_notifications-evacomremnotif = 'X'.
+        lv_curryr_eva_open = 'X'.
+        CONCATENATE lv_notifinfogrp4 TEXT-aw1 p_15 ';' INTO lv_notifinfogrp4 SEPARATED BY space.
+      ENDIF.
+      IF p_chk16 IS NOT INITIAL AND lv_days_diff = p_16.
+        gwa_notifications-evastatus = 'Vendor Evaluation Not Completed'.
+        gwa_notifications-evacomremnotif = 'X'.
+        lv_curryr_eva_open = 'X'.
+        CONCATENATE lv_notifinfogrp4 TEXT-aw1 p_16 ';' INTO lv_notifinfogrp4 SEPARATED BY space.
+      ENDIF.
+      IF p_chk17 IS NOT INITIAL AND lv_days_diff = p_17.
+        gwa_notifications-evastatus = 'Vendor Evaluation Not Completed'.
+        gwa_notifications-evacomremnotif = 'X'.
+        lv_curryr_eva_open = 'X'.
+        CONCATENATE lv_notifinfogrp4 TEXT-aw1 p_17 ';' INTO lv_notifinfogrp4 SEPARATED BY space.
+      ENDIF.
+      IF p_chk18 IS NOT INITIAL AND lv_days_diff >= p_18.
+        gwa_notifications-evastatus = 'Vendor Evaluation Not Completed'.
+        gwa_notifications-evacomremnotif = 'X'.
+        lv_curryr_eva_open = 'X'.
+        CONCATENATE lv_notifinfogrp4 TEXT-aw2 p_18 ';' INTO lv_notifinfogrp4 SEPARATED BY space.
+      ENDIF.
+      gwa_notifications-notifinfogrp4 = lv_notifinfogrp4.
+      EXIT.
+    ENDLOOP.
+
+    "Logic to identify whether to send Vendor Evaluation expired PO Exist Notification in last two years
+    IF lv_curryr_eva_open IS INITIAL.
+      CALL FUNCTION 'RP_CALC_DATE_IN_INTERVAL'
+        EXPORTING
+          date      = sy-datum
+          days      = '00'
+          months    = '00'
+          signum    = '-'
+          years     = '2'
+        IMPORTING
+          calc_date = lv_twoyears_back.
+
+      SELECT SINGLE b~ebeln, b~aedat, a~ebelp FROM ekpo AS a
+        INNER JOIN ekko AS b
+        ON a~ebeln = b~ebeln
+        INTO @DATA(ls_ekko)
+        WHERE b~lifnr EQ @<fs_crcomptaxinfo>-zvencode AND
+            a~loekz EQ '' AND
+            b~bstyp EQ 'F' AND
+            b~aedat GE @lv_twoyears_back.
+      IF sy-subrc = 0 AND <fs_crcomptaxinfo>-znexreview_date IS NOT INITIAL.
+        lv_days_diff = <fs_crcomptaxinfo>-znexreview_date - sy-datum.
+
+        LOOP AT gt_venexpiryinfo ASSIGNING <fs_venexpiryinfo>
+          WHERE lifnr = <fs_crcomptaxinfo>-zvencode AND
+          zdate1 IS NOT INITIAL AND
+          comp_dt IS NOT INITIAL.
+          IF lv_days_diff < p_13c.
+            gwa_notifications-evastatus = 'Expired'.
+            IF p_chk13c IS NOT INITIAL.
+              gwa_notifications-evaexpremnotif = 'X'.
+              CONCATENATE lv_notifinfogrp3 TEXT-aw4 ';' INTO lv_notifinfogrp3 SEPARATED BY space.
+            ENDIF.
+          ENDIF.
+          IF lv_days_diff = p_13c.
+            gwa_notifications-evastatus = 'Qualified'.
+            gwa_notifications-reminderdays = p_13c.
+            IF p_chk13c IS NOT INITIAL.
+              gwa_notifications-evaexpremnotif = 'X'.
+              CONCATENATE lv_notifinfogrp3 TEXT-aw3 p_13c ';' INTO lv_notifinfogrp3 SEPARATED BY space.
+            ENDIF.
+          ENDIF.
+          IF lv_days_diff = p_13b.
+            gwa_notifications-evastatus = 'Qualified'.
+            gwa_notifications-reminderdays = p_13b.
+            IF p_chk13b IS NOT INITIAL.
+              gwa_notifications-evaexpremnotif = 'X'.
+              CONCATENATE lv_notifinfogrp3 TEXT-aw3 p_13b ';' INTO lv_notifinfogrp3 SEPARATED BY space.
+            ENDIF.
+          ENDIF.
+          IF lv_days_diff = p_13a.
+            gwa_notifications-evastatus = 'Qualified'.
+            gwa_notifications-reminderdays = p_13a.
+            IF p_chk13a IS NOT INITIAL.
+              gwa_notifications-evaexpfirnotif = 'X'.
+              CONCATENATE lv_notifinfogrp3 TEXT-aw3 p_13a ';' INTO lv_notifinfogrp3 SEPARATED BY space.
+            ENDIF.
+          ENDIF.
+          gwa_notifications-notifinfogrp3 = lv_notifinfogrp3.
+
+          MOVE: <fs_venexpiryinfo>-ekgrp1 TO gwa_notifications-ownsekgrp1,
+                <fs_venexpiryinfo>-desc1 TO gwa_notifications-ownsdesc1,
+               <fs_venexpiryinfo>-zdate1 TO gwa_notifications-createddate.
+
+          MOVE: <fs_venexpiryinfo>-zyear1 TO gwa_notifications-zyear1,
+               <fs_venexpiryinfo>-seq TO gwa_notifications-seq,
+               <fs_venexpiryinfo>-submit TO gwa_notifications-submit,
+               <fs_venexpiryinfo>-del TO gwa_notifications-del,
+               <fs_venexpiryinfo>-comp_dt TO gwa_notifications-comp_dt.
+          EXIT.
+        ENDLOOP.
+      ENDIF.
+    ENDIF.
+    "List of Vendor CR CC Tax Card expired and mail to vendor and cc procurement team
+    IF gwa_notifications-crtaxremnotif IS NOT INITIAL OR gwa_notifications-crtaxfirstnotif IS NOT INITIAL.
+      APPEND gwa_notifications TO gt_notifications.
+      APPEND gwa_notifications TO gt_vendornotificationsalv.
+    ENDIF.
+    "List of Vendor Evaluation not completed and mail to department and cc procurement team
+    IF gwa_notifications-evacomremnotif IS NOT INITIAL.
+      APPEND gwa_notifications TO gt_vendcompnotifications.
+      APPEND gwa_notifications TO gt_vendornotificationsalv.
+    ENDIF.
+    "List of Vendor Evaluation Expired and mail to procurement team
+    IF gwa_notifications-evaexpfirnotif IS NOT INITIAL OR gwa_notifications-evaexpremnotif IS NOT INITIAL.
+      APPEND gwa_notifications TO gt_vendexpnotifications.
+      APPEND gwa_notifications TO gt_vendornotificationsalv.
+    ENDIF.
+*    APPEND gwa_notifications TO gt_vendornotificationsalv.
+    CLEAR: gwa_notifications, lv_days_diff, lv_curryr_eva_open.
+    CLEAR: lv_notifinfogrp1, lv_notifinfogrp2, lv_notifinfogrp3, lv_notifinfogrp4.
+  ENDLOOP.
+ENDFORM.
+** Send Notification for Vendor Evaluation not completed and mail to department and cc procurement team
+FORM sendvendcompnotification.
+
+  LOOP AT gt_vendcompnotifications ASSIGNING <fs_vendcompnotifs>
+    GROUP BY ( ekgrp1 = <fs_vendcompnotifs>-ekgrp1 ) " prernam = <fs_vendcompnotifs>-prernam               " Added
+    REFERENCE INTO DATA(groupdata).
+
+
+    wa_fcat-coltext = 'Vendor Code'.
+    APPEND wa_fcat TO it_fcat.
+    CLEAR wa_fcat.
+    wa_fcat-coltext = 'Vendor Name'.
+    APPEND wa_fcat TO it_fcat.
+    CLEAR wa_fcat.
+    wa_fcat-coltext = 'Type of Company'.
+    APPEND wa_fcat TO it_fcat.
+    CLEAR wa_fcat.
+    wa_fcat-coltext = 'Department'.
+    APPEND wa_fcat TO it_fcat.
+    CLEAR wa_fcat.
+    wa_fcat-coltext = 'Evaluation Created Date'.
+    APPEND wa_fcat TO it_fcat.
+    CLEAR wa_fcat.
+    wa_fcat-coltext = 'Status'.
+    APPEND wa_fcat TO it_fcat.
+    CLEAR wa_fcat.
+
+    LOOP AT it_fcat INTO wa_fcat.
+      w_head-text = wa_fcat-coltext.
+      CALL FUNCTION 'WWW_ITAB_TO_HTML_HEADERS'
+        EXPORTING
+          field_nr = sy-tabix
+          text     = w_head-text
+          fgcolor  = 'black'
+          bgcolor  = 'lightgreen'
+        TABLES
+          header   = t_header.
+      CALL FUNCTION 'WWW_ITAB_TO_HTML_LAYOUT'
+        EXPORTING
+          field_nr = sy-tabix
+          fgcolor  = 'black'
+          size     = '2'
+        TABLES
+          fields   = t_fields.
+    ENDLOOP.
+    CLEAR: wa_fcat.
+
+    LOOP AT GROUP groupdata ASSIGNING FIELD-SYMBOL(<fs_member>).
+      CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+        EXPORTING
+          input  = <fs_member>-zvencode
+        IMPORTING
+          output = wa_evaf1-zvencode.
+      wa_evaf1-zvendorname = <fs_member>-zvendorname.
+      wa_evaf1-type = <fs_member>-type.
+      wa_evaf1-departini = <fs_member>-desc1.
+      CONCATENATE <fs_member>-createddate+6(2) '/' <fs_member>-createddate+4(2) '/' <fs_member>-createddate+0(4) INTO  wa_evaf1-createddate .
+      wa_evaf1-evastatus = <fs_member>-evastatus.
+      APPEND  wa_evaf1 TO it_evaf1.
+      CLEAR  wa_evaf1.
+*      IF lv_departinitial IS INITIAL.                                          " Added By Anil
+*        LOOP AT gt_departmentinfo ASSIGNING <fs_departmentinfo> WHERE dept = <fs_member>-ekgrp1 OR eknam = <fs_member>-DESC1.  " update
+*          lv_departinitial = <fs_departmentinfo>-dept.      "eknam. " Changes by Anil deptintial
+*          CONDENSE lv_departinitial.
+*          EXIT.
+*        ENDLOOP.
+*      ENDIF.
+
+     IF lv_departinitial IS INITIAL.                                          "Added by Anil
+        LOOP AT gt_departmentinfo ASSIGNING <fs_departmentinfo> WHERE dept = <fs_member>-ekgrp1 OR eknam = <fs_member>-DESC1.  " update
+         IF <fs_departmentinfo>-dept = 'END-USER'.
+            lv_departinitial = <fs_departmentinfo>-eknam.
+         else.
+           lv_departinitial = <fs_departmentinfo>-dept.
+         ENDIF.
+
+          CONDENSE lv_departinitial.
+          EXIT.
+        ENDLOOP.
+      ENDIF.
+    ENDLOOP.
+
+    CLEAR wa_body.
+    REFRESH: t_html_x.
+
+    CONCATENATE 'Perform Vendor Evaluation for' lv_departinitial 'related vendor' lv_current_year INTO lv_subject SEPARATED BY space.
+    CONCATENATE '<p>Dear' lv_departinitial 'Team,</p>' INTO wa_body-line SEPARATED BY space.
+    APPEND wa_body TO t_html_x.
+
+    CLEAR wa_body.
+    wa_body-line = 'Please perform the vendor evaluation for the following vendor:</p>'.
+    APPEND wa_body TO t_html_x.
+
+    CALL FUNCTION 'WWW_ITAB_TO_HTML'
+      EXPORTING
+        table_header = wa_bodytable
+      TABLES
+        html         = t_html_x
+        fields       = t_fields
+        row_header   = t_header
+        itable       = it_evaf1.
+
+    CLEAR wa_body.
+    wa_body-line =  '<p>This is required for the continuous business and to comply the procurement procedure.</p>'.
+    APPEND wa_body TO t_html_x.
+
+    CLEAR wa_body.
+    wa_body-line =  '<p><b><u>Note</u>:  Vendor Evaluation Created Date mentioned above is the initiated date by Procurement Team</b></p>'.
+    APPEND wa_body TO t_html_x.
+
+    CLEAR wa_body.
+    wa_body-line = '<p><b>Regards,<br> SAP System Workflow<br></b></p>'.
+    APPEND wa_body TO t_html_x.
+
+    "Create send request for email notification
+    TRY .
+        lv_shortsubject = lv_subject.
+        gr_send_request = cl_bcs=>create_persistent( ).
+        gr_document = cl_document_bcs=>create_document(
+        i_type = gc_raw
+        i_text = t_html_x[]
+        i_subject = lv_shortsubject ).
+        LOOP AT gt_departmentinfo ASSIGNING <fs_departmentinfo> WHERE dept = lv_departinitial.  " changes
+          gr_recipient = cl_cam_address_bcs=>create_internet_address( <fs_departmentinfo>-id ).
+          CALL METHOD gr_send_request->add_recipient
+            EXPORTING
+              i_recipient = gr_recipient
+              i_express   = 'X'.
+        ENDLOOP.
+        LOOP AT gt_departmentinfo ASSIGNING <fs_departmentinfo> WHERE dept = 'PROCUREMENT'.
+          gr_recipient = cl_cam_address_bcs=>create_internet_address( <fs_departmentinfo>-id ).
+          CALL METHOD gr_send_request->add_recipient
+            EXPORTING
+              i_recipient = gr_recipient
+              i_express   = 'X'
+              i_copy      = 'X'.
+        ENDLOOP.
+**
+*
+
+        gr_send_request->set_sender( cl_sapuser_bcs=>create( sy-uname ) ).
+        gr_send_request->set_message_subject(
+          EXPORTING
+            ip_subject = lv_subject ).
+        gr_send_request->set_document( gr_document ).
+        gr_send_request->send(
+              EXPORTING
+                i_with_error_screen = 'X'
+              RECEIVING
+                result              = gv_sent_to_all ).
+        "Commit to send email
+        COMMIT WORK.
+      CATCH cx_bcs INTO gr_bcs_exception.
+    ENDTRY.
+    CLEAR: it_evaf1, t_html_x, it_fcat, lv_shortsubject, lv_subject, lv_departinitial.
+    CLEAR: w_head, wa_bodytable, wa_body, t_header[], t_fields[].
+  ENDLOOP.
+ENDFORM.
+
+** Send Notification for Vendor Evaluation Expired and mail to procurement team
+FORM sendvendexpnotification.
+
+  LOOP AT gt_vendexpnotifications ASSIGNING <fs_vendexpnotifis>
+    GROUP BY ( evastatus = <fs_vendexpnotifis>-evastatus
+               evaexpfirnotif = <fs_vendexpnotifis>-evaexpfirnotif
+               reminderdays = <fs_vendexpnotifis>-reminderdays
+               evaexpremnotif  = <fs_vendexpnotifis>-evaexpremnotif )
+    REFERENCE INTO DATA(groupdata).
+
+    CLEAR:  it_fcat.
+    wa_fcat-coltext = 'Vendor Code'.
+    APPEND wa_fcat TO it_fcat.
+    CLEAR wa_fcat.
+    wa_fcat-coltext = 'Vendor Name'.
+    APPEND wa_fcat TO it_fcat.
+    CLEAR wa_fcat.
+    wa_fcat-coltext = 'Type of Company'.
+    APPEND wa_fcat TO it_fcat.
+    CLEAR wa_fcat.
+    wa_fcat-coltext = 'Department'.
+    APPEND wa_fcat TO it_fcat.
+    CLEAR wa_fcat.
+    wa_fcat-coltext = 'Evaluation Created Date'.
+    APPEND wa_fcat TO it_fcat.
+    CLEAR wa_fcat.
+    wa_fcat-coltext = 'Evaluation Completed Date'.
+    APPEND wa_fcat TO it_fcat.
+    CLEAR wa_fcat.
+    wa_fcat-coltext = 'Business Relation'.
+    APPEND wa_fcat TO it_fcat.
+    CLEAR wa_fcat.
+    wa_fcat-coltext = 'Evaluation Status'.
+    APPEND wa_fcat TO it_fcat.
+    CLEAR wa_fcat.
+    LOOP AT it_fcat INTO wa_fcat.
+      w_head-text = wa_fcat-coltext.
+      CALL FUNCTION 'WWW_ITAB_TO_HTML_HEADERS'
+        EXPORTING
+          field_nr = sy-tabix
+          text     = w_head-text
+          fgcolor  = 'black'
+          bgcolor  = 'lightgreen'
+        TABLES
+          header   = t_header.
+      CALL FUNCTION 'WWW_ITAB_TO_HTML_LAYOUT'
+        EXPORTING
+          field_nr = sy-tabix
+          fgcolor  = 'black'
+          size     = '2'
+        TABLES
+          fields   = t_fields.
+    ENDLOOP.
+
+    CLEAR wa_body.
+    REFRESH: t_html_x.
+
+    LOOP AT GROUP groupdata ASSIGNING FIELD-SYMBOL(<fs_member>).
+      CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+        EXPORTING
+          input  = <fs_member>-zvencode
+        IMPORTING
+          output = wa_evapf1-zvencode.
+      wa_evapf1-zvendorname = <fs_member>-zvendorname.
+      wa_evapf1-type = <fs_member>-type.
+      wa_evapf1-departini = <fs_member>-ownsdesc1.
+      CONCATENATE <fs_member>-createddate+6(2) '/' <fs_member>-createddate+4(2) '/' <fs_member>-createddate+0(4) INTO wa_evapf1-createddate.
+      CONCATENATE <fs_member>-comp_dt+6(2) '/' <fs_member>-comp_dt+4(2) '/' <fs_member>-comp_dt+0(4) INTO wa_evapf1-zcomdate.
+      wa_evapf1-zbusrela = <fs_member>-zbusrela.
+      wa_evapf1-evastatus = <fs_member>-evastatus.
+      APPEND  wa_evapf1 TO it_evapf1.
+      CLEAR  wa_evapf1.
+      IF <fs_member>-evaexpfirnotif IS NOT INITIAL.
+        lv_expmailtype = '1'.
+      ELSEIF <fs_member>-evaexpremnotif IS NOT INITIAL AND <fs_member>-evastatus = 'Qualified'.
+        lv_expmailtype = '2'.
+      ELSEIF <fs_member>-evaexpremnotif IS NOT INITIAL AND <fs_member>-evastatus = 'Expired'.
+        lv_expmailtype = '3'.
+      ENDIF.
+    ENDLOOP.
+
+    IF lv_expmailtype EQ '1'.
+      CONCATENATE 'Perform Vendor Evaluation for Active Vendors FY' lv_current_year INTO lv_subject.
+      wa_body-line =  '<p>Dear Procurement Team</p>'.
+      APPEND wa_body TO t_html_x.
+      CLEAR wa_body.
+      CONCATENATE '<p>Please be informed that Vendor Evaluation for the following vendor'
+                  '(s) are about to Expire within [' <fs_member>-reminderdays '] days, p'
+            'lease perform and complete the Vendor Evaluation in the syste'
+            'm as per criteria to update in our vendor data base asap.</p>'
+             INTO wa_body-line.
+      APPEND wa_body TO t_html_x.
+      CLEAR wa_body.
+    ELSEIF lv_expmailtype EQ '2'.
+      CONCATENATE 'Perform Vendor Evaluation for Active Vendors FY' lv_current_year ' - REMINDER' INTO lv_subject.
+      CONCATENATE '<p>Dear Procurement Team</p>'
+                  '<p><b><u>REMINDER</u></b></p>'
+             INTO wa_body-line.
+      APPEND wa_body TO t_html_x.
+      CLEAR wa_body.
+      CONCATENATE '<p>Please be informed that Vendor Evaluation for the following vendor'
+                  '(s) are about to Expire within [' <fs_member>-reminderdays '] days, p'
+            'lease perform and complete the Vendor Evaluation in the syste'
+            'm as per criteria to update in our vendor data base asap.</p>'
+             INTO wa_body-line.
+      APPEND wa_body TO t_html_x.
+      CLEAR wa_body.
+    ELSEIF lv_expmailtype EQ '3'.
+      CONCATENATE 'Perform Vendor Evaluation for Active Vendors FY' lv_current_year ' - REMINDER' INTO lv_subject.
+      CONCATENATE '<p>Dear Procurement Team</p>'
+                  '<p><b><u>REMINDER</u></b></p>'
+             INTO wa_body-line.
+      APPEND wa_body TO t_html_x.
+      CLEAR wa_body.
+      CONCATENATE '<p>Please be informed that Vendor Evaluation for the following vendor'
+                  '(s) has been expired within our system, p'
+            'lease perform and complete the Vendor Evaluation in the syste'
+            'm as per criteria to update in our vendor data base asap.</p>'
+             INTO wa_body-line.
+      APPEND wa_body TO t_html_x.
+      CLEAR wa_body.
+    ENDIF.
+
+    CALL FUNCTION 'WWW_ITAB_TO_HTML'
+      EXPORTING
+        table_header = wa_bodytable
+      TABLES
+        html         = t_html_x
+        fields       = t_fields
+        row_header   = t_header
+        itable       = it_evapf1.
+
+    CLEAR wa_body.
+    wa_body-line =  '<p>This is required for the continuous business and to comply the procurement procedure.</p>'.
+    APPEND wa_body TO t_html_x.
+
+    CLEAR wa_body.
+    wa_body-line = '<p><b>Regards,<br> SAP System Workflow<br></b></p>'.
+    APPEND wa_body TO t_html_x.
+
+    "Create send request for email notification
+    TRY .
+        lv_shortsubject = lv_subject.
+        gr_send_request = cl_bcs=>create_persistent( ).
+        gr_document = cl_document_bcs=>create_document(
+        i_type = gc_raw
+        i_text = t_html_x[]
+        i_subject = lv_shortsubject ).
+        LOOP AT gt_departmentinfo ASSIGNING <fs_departmentinfo> WHERE dept = 'PROCUREMENT'.
+          gr_recipient = cl_cam_address_bcs=>create_internet_address( <fs_departmentinfo>-id ).
+          CALL METHOD gr_send_request->add_recipient
+            EXPORTING
+              i_recipient = gr_recipient
+              i_express   = 'X'.
+        ENDLOOP.
+
+        gr_send_request->set_sender( cl_sapuser_bcs=>create( sy-uname ) ).
+        gr_send_request->set_message_subject(
+          EXPORTING
+            ip_subject = lv_subject ).
+        gr_send_request->set_document( gr_document ).
+        gr_send_request->send(
+              EXPORTING
+                i_with_error_screen = 'X'
+              RECEIVING
+                result              = gv_sent_to_all ).
+        "Commit to send email
+        COMMIT WORK.
+      CATCH cx_bcs INTO gr_bcs_exception.
+    ENDTRY.
+    CLEAR: it_evapf1,t_html_x, it_fcat, lv_shortsubject, lv_subject, lv_expmailtype.
+    CLEAR: w_head, wa_bodytable, wa_body, t_header[], t_fields[].
+
+  ENDLOOP.
+ENDFORM.
+** Send Notification for CR Computer Card Tax Card Expiry
+FORM sendexpirynotification.
+  DATA: counter     TYPE i VALUE 1,
+        processmail TYPE i.
+
+*  DATA: it_fact2 TYPE slis_t_fieldcat_alv, " Fieldcatalog
+*        wa_fcat2 TYPE slis_fieldcat_alv.
+
+  LOOP AT gt_notifications ASSIGNING <fs_notifications>.
+    IF <fs_notifications>-crtaxfirstnotif IS NOT INITIAL AND <fs_notifications>-crtaxremnotif IS NOT INITIAL.
+      processmail = 2.
+      counter = 1.
+    ELSE.
+      processmail = 1.
+      counter = 1.
+    ENDIF.
+
+    DO.
+*      new one add.
+      CLEAR:  it_fcat, wa_fcat.
+      wa_fcat-edit_mask = 'Description'.
+      APPEND wa_fcat TO it_fcat.
+      CLEAR wa_fcat.
+
+      CLEAR: t_header1, t_fields1.
+
+      LOOP AT it_fcat INTO wa_fcat.
+        w_head-text = wa_fcat-edit_mask.
+
+        t_header1-text    = w_head-text.
+        t_header1-fg_color = 'black'.
+        t_header1-bg_color = 'lightgreen'.
+
+        CALL FUNCTION 'WWW_ITAB_TO_HTML_HEADERS'
+          EXPORTING
+            field_nr = sy-tabix
+            text     = t_header1-text
+            fgcolor  = t_header1-fg_color
+            bgcolor  = t_header1-bg_color
+          TABLES
+            header   = t_header1.
+
+        CLEAR t_fields1.
+        t_fields1-fg_color = 'black'.
+        t_fields1-size = '2'.
+
+        CALL FUNCTION 'WWW_ITAB_TO_HTML_LAYOUT'
+          EXPORTING
+            field_nr = sy-tabix
+            fgcolor  = t_fields1-fg_color
+            size     = t_fields1-size
+          TABLES
+            fields   = t_fields1.
+      ENDLOOP.
+      CLEAR: it_fcat.
+
+      REFRESH : it_f1.
+      CLEAR : wa_f1.
+      CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+        EXPORTING
+          input  = <fs_notifications>-zvencode
+        IMPORTING
+          output = lv_vendorcode.
+
+      CONDENSE lv_vendorcode.
+
+      wa_f2-descr = 'Valid CR copy ( Eng-Arabic)'.
+      APPEND wa_f2 TO it_f2.
+      CLEAR wa_f2.
+
+      wa_f2-descr = 'Company Computer Card / ID'.
+      APPEND wa_f2 TO it_f2.
+      CLEAR wa_f2.
+
+      wa_f2-descr = 'Valid Trade License'.
+      APPEND wa_f2 TO it_f2.
+      CLEAR wa_f2.
+
+      wa_f2-descr = 'Valid Tax Registration Card'.
+      APPEND wa_f2 TO it_f2.
+      CLEAR wa_f2.
+
+      wa_f2-descr = 'ICV certificate (if available)'.
+      APPEND wa_f2 TO it_f2.
+      CLEAR wa_f2.
+*      new one add.
+
+      CLEAR:  it_fcat, wa_fcat.
+      wa_fcat-edit_mask = 'Description'.
+      APPEND wa_fcat TO it_fcat.
+      CLEAR wa_fcat.
+      wa_fcat-edit_mask = 'Data (Vendor to Fill) - Date Format (DD.MM.YYYY)'.
+      APPEND wa_fcat TO it_fcat.
+      CLEAR wa_fcat.
+
+      LOOP AT it_fcat INTO wa_fcat.
+        w_head-text = wa_fcat-edit_mask.
+        CALL FUNCTION 'WWW_ITAB_TO_HTML_HEADERS'
+          EXPORTING
+            field_nr = sy-tabix
+            text     = w_head-text
+            fgcolor  = 'black'
+            bgcolor  = 'lightgreen'
+          TABLES
+            header   = t_header.
+        CALL FUNCTION 'WWW_ITAB_TO_HTML_LAYOUT'
+          EXPORTING
+            field_nr = sy-tabix
+            fgcolor  = 'black'
+            size     = '2'
+          TABLES
+            fields   = t_fields.
+      ENDLOOP.
+      CLEAR it_fcat.
+
+      REFRESH : it_f1.
+      CLEAR : wa_f1.
+      CALL FUNCTION 'CONVERSION_EXIT_ALPHA_OUTPUT'
+        EXPORTING
+          input  = <fs_notifications>-zvencode
+        IMPORTING
+          output = lv_vendorcode.
+
+      CONDENSE lv_vendorcode.
+
+      wa_f1-descr = 'CR Registration No'.
+      wa_f1-value = ' '.
+      APPEND wa_f1 TO it_f1.
+      CLEAR wa_f1.
+
+      wa_f1-descr = 'CR Expiry Date'.
+      wa_f1-value = ' '.
+      APPEND wa_f1 TO it_f1.
+      CLEAR wa_f1.
+
+      wa_f1-descr = 'Computer Card Expiry Date'.
+      wa_f1-value = ' '.
+      APPEND wa_f1 TO it_f1.
+      CLEAR wa_f1.
+
+      wa_f1-descr = 'Tax Card Expiry Date'.
+      wa_f1-value = ' '.
+      APPEND wa_f1 TO it_f1.
+      CLEAR wa_f1.
+
+      wa_f1-descr = 'Vendor Code'.
+      wa_f1-value =  lv_vendorcode.
+      APPEND wa_f1 TO it_f1.
+      CLEAR wa_f1.
+
+      IF processmail = 1 AND counter = 1.
+        IF <fs_notifications>-crtaxremnotif IS NOT INITIAL.
+          CONCATENATE 'Request to update CR, Computer & TAX card' lv_current_year 'Vendor' lv_vendorcode '- REMINDER' INTO lv_subject SEPARATED BY space.
+          CONCATENATE '<p>Dear Sir/Madam,</p>'
+*                      '<p><b><u>REMINDER</u></b></p>'
+                      '<p>We would like to bring to your attention that some of your company documents have either expired or are approaching their expiration date.</p>'
+          INTO wa_body-line.
+        ELSEIF <fs_notifications>-crtaxfirstnotif IS NOT INITIAL.
+          CONCATENATE 'Request to update CR, Computer & TAX card' lv_current_year 'Vendor' lv_vendorcode INTO lv_subject SEPARATED BY space.
+          CONCATENATE '<p>Dear Sir/Madam,</p>'
+                      '<p>We would like to bring to your attention that some of your company documents have either expired or are approaching their expiration date.</p>'
+                 INTO wa_body-line.
+        ENDIF.
+      ELSEIF processmail = 2 AND counter = 1.
+        IF <fs_notifications>-crtaxfirstnotif IS NOT INITIAL.
+          CONCATENATE 'Request to update CR, Computer & TAX card' lv_current_year 'Vendor' lv_vendorcode INTO lv_subject SEPARATED BY space.
+          CONCATENATE '<p>Dear Sir/Madam,</p>'
+                      '<p>We would like to bring to your attention that some of your company documents have either expired or are approaching their expiration date.</p>'
+                 INTO wa_body-line.
+        ENDIF.
+      ELSEIF processmail = 2 AND counter = 2.
+        IF <fs_notifications>-crtaxremnotif IS NOT INITIAL.
+          CONCATENATE 'Request to update CR, Computer & TAX card' lv_current_year 'Vendor' lv_vendorcode '- REMINDER' INTO lv_subject SEPARATED BY space.
+          CONCATENATE '<p>Dear Sir/Madam,</p>'
+*                      '<p><b><u>REMINDER</u></b></p>'
+                      '<p>We would like to bring to your attention that some of your company documents have either expired or are approaching their expiration date.</p>'
+                 INTO wa_body-line.
+        ENDIF.
+      ENDIF.
+      APPEND wa_body TO t_html_x.
+
+      CLEAR wa_body.
+      wa_body-line = '<p>To ensure uninterrupted business collaboration and compliance with our records, we kindly request you to provide updated copies of the following documents at the earliest: <p>'.
+      APPEND wa_body TO t_html_x.
+
+      CALL FUNCTION 'WWW_ITAB_TO_HTML'
+        EXPORTING
+          table_header = wa_bodytable1
+        TABLES
+          html         = t_html_x
+          fields       = t_fields1
+          row_header   = t_header1
+          itable       = it_f2.
+
+      CLEAR wa_body.
+      wa_body-line = '<p> <p>'.
+      APPEND wa_body TO t_html_x.
+
+      CALL FUNCTION 'WWW_ITAB_TO_HTML'
+        EXPORTING
+          table_header = wa_bodytable
+        TABLES
+          html         = t_html_x
+          fields       = t_fields
+          row_header   = t_header
+          itable       = it_f1.
+
+      CLEAR wa_body.
+      wa_body-line =  '<p>Please share the requested documents by replying to this email. Should you require any further clarification, please feel free to reach out.</p>'.
+      APPEND wa_body TO t_html_x.
+
+      CLEAR wa_body.
+      wa_body-line =  '<p>We appreciate your prompt attention to this matter and look forward to your response.</p>'.
+      APPEND wa_body TO t_html_x.
+
+      CLEAR wa_body.
+      CONCATENATE '<p>Thank you & Best Regards,</p>'
+                  '<p><b>Procurement Team<br>Mesaieed Power Company Limited</b></p>' INTO wa_body-line.
+      APPEND wa_body TO t_html_x.
+
+      "Create send request for email notification
+      TRY .
+          lv_shortsubject = lv_subject.
+          gr_send_request = cl_bcs=>create_persistent( ).
+          gr_document = cl_document_bcs=>create_document(
+          i_type = gc_raw
+          i_text = t_html_x[]
+          i_subject = lv_shortsubject ).
+          "Add Supplier Email Address
+          IF <fs_notifications>-smtp_addr IS NOT INITIAL.
+            gr_recipient = cl_cam_address_bcs=>create_internet_address( <fs_notifications>-smtp_addr ).
+          ENDIF.
+          CALL METHOD gr_send_request->add_recipient
+            EXPORTING
+              i_recipient = gr_recipient
+              i_express   = 'X'.
+          "CC Procurement Team Email Address
+          LOOP AT gt_departmentinfo ASSIGNING <fs_departmentinfo> WHERE dept = 'PROCUREMENT'.
+            gr_recipient = cl_cam_address_bcs=>create_internet_address( <fs_departmentinfo>-id ).
+            CALL METHOD gr_send_request->add_recipient
+              EXPORTING
+                i_recipient = gr_recipient
+                i_express   = 'X'
+                i_copy      = 'X'.
+          ENDLOOP.
+          gr_send_request->set_sender( cl_sapuser_bcs=>create( sy-uname ) ).
+          gr_send_request->set_document( gr_document ).
+          gr_send_request->set_message_subject(
+            EXPORTING
+              ip_subject = lv_subject ).
+          gr_send_request->send(
+                EXPORTING
+                  i_with_error_screen = 'X'
+                RECEIVING
+                  result              = gv_sent_to_all ).
+          "Commit to send email
+          COMMIT WORK.
+        CATCH cx_bcs INTO gr_bcs_exception.
+      ENDTRY.
+      counter = counter + 1.
+      CLEAR: it_f1,it_f2,t_html_x, lv_shortsubject, lv_subject, it_fcat, lv_vendorcode.
+      CLEAR: w_head, wa_bodytable, wa_body, t_header[], t_fields[], t_header1[], t_fields1[].
+      IF counter > processmail.
+        EXIT. " Exit the loop when counter exceeds processMail times
+      ENDIF.
+    ENDDO.
+    CLEAR: counter, processmail.
+  ENDLOOP.
+
+ENDFORM.
+
+* Calculate interval between two dates
+FORM cal_dt CHANGING ps_date TYPE dats
+                     l_date.
+  CALL FUNCTION 'HR_99S_INTERVAL_BETWEEN_DATES'
+    EXPORTING
+      begda = ps_date
+      endda = sy-datum
+    IMPORTING
+      days  = l_date.
+ENDFORM.
+
+FORM performselectunselectall.
+  CASE sscrfields-ucomm.
+    WHEN 'ALL'.
+      p_chk1 = p_chk2 = p_chk3 = p_chk4 = p_chk5 = p_chk6 = p_chk7 = p_chk8 = p_chk9 = p_chk10 = p_chk11 = p_chk12 = abap_true.
+      p_chk14 = abap_true.
+      p_chk13a = p_chk13b = p_chk13c = abap_true.
+      p_chk15 = p_chk16 = p_chk17 = p_chk18 = abap_true.
+    WHEN 'BUT2'.
+      p_chk1 = p_chk2 = p_chk3 = p_chk4 = p_chk5 = p_chk6 = p_chk7 = p_chk8 = p_chk9 = p_chk10 = p_chk11 = p_chk12 = abap_false.
+      p_chk14 = abap_false.
+      p_chk13a = p_chk13b = p_chk13c = abap_false.
+      p_chk15 = p_chk16 = p_chk17 = p_chk18 = abap_false.
+  ENDCASE.
+ENDFORM.
+
+FORM displaybuttonname.
+  DATA: icon_name       TYPE iconname,
+        button_text(20) TYPE c,
+        quickinfo       LIKE smp_dyntxt-quickinfo,
+        icon_str(255)   TYPE c.
+* Setup button 1 (Fiscal year)
+  icon_name = 'ICON_SELECT_ALL'.    " 'ICON_DISPLAY_MORE'.
+  button_text = 'Select All'.
+  CONCATENATE button_text TEXT-akt
+              INTO quickinfo
+              SEPARATED BY space.
+  CALL FUNCTION 'ICON_CREATE'
+    EXPORTING
+      name   = icon_name
+      text   = button_text
+      info   = quickinfo
+*     ADD_STDINF                  = 'X'
+    IMPORTING
+      result = icon_str
+    EXCEPTIONS
+      OTHERS = 0. "not interested in errors
+* place text and icon on button
+  but1 = icon_str.
+
+* Setup button 2 (Date period)
+  icon_name = 'ICON_DESELECT_ALL'.    " 'ICON_DISPLAY_MORE'.
+  button_text = 'Deselect All'.
+  CONCATENATE button_text TEXT-akt
+              INTO quickinfo
+              SEPARATED BY space.
+  CALL FUNCTION 'ICON_CREATE'
+    EXPORTING
+      name   = icon_name
+      text   = button_text
+      info   = quickinfo
+*     ADD_STDINF                  = 'X'
+    IMPORTING
+      result = icon_str
+    EXCEPTIONS
+      OTHERS = 0. "not interested in errors
+* place text and icon on button
+  but2 = icon_str.
+ENDFORM.
+* ALV DISPLAY RECORDS
+FORM displayalvrecords.
+  REFRESH it_fcatalv.
+
+  PERFORM fcatalv USING: 'ZVENCODE'        '' 'Vendor Code',
+                         'ZVENDORNAME'     '' 'Vendor Name',
+                         'TYPE'            '' 'Type',
+                         'SMTP_ADDR'       '' 'Email Address',
+                         'ZBUSRELA'        '' 'Business Relation'.
+
+  IF p_chk1 IS NOT INITIAL OR p_chk2 IS NOT INITIAL OR p_chk3 IS NOT INITIAL OR p_chk4 IS NOT INITIAL OR
+    p_chk5 IS NOT INITIAL OR p_chk6 IS NOT INITIAL OR p_chk7 IS NOT INITIAL OR p_chk8 IS NOT INITIAL OR
+    p_chk9 IS NOT INITIAL OR p_chk10 IS NOT INITIAL OR p_chk11 IS NOT INITIAL OR p_chk12 IS NOT INITIAL OR p_chk14 IS NOT INITIAL.
+    PERFORM fcatalv USING: 'ZCR_TAXCARD'     '' 'Tax Card',
+                           'ZCR_EXPDATE'     '' 'CR Expiry Date',
+                           'ZCOMP_CARD_EX'   '' 'Computer Card Expiry Date',
+                           'ZTAX_CARDDATE'   '' 'Tax Card Expiry Date'.
+    IF p_chk1 IS NOT INITIAL OR p_chk2 IS NOT INITIAL OR p_chk3 IS NOT INITIAL OR p_chk4 IS NOT INITIAL OR
+      p_chk5 IS NOT INITIAL OR p_chk6 IS NOT INITIAL OR p_chk7 IS NOT INITIAL OR p_chk8 IS NOT INITIAL OR
+      p_chk9 IS NOT INITIAL OR p_chk10 IS NOT INITIAL OR p_chk11 IS NOT INITIAL OR p_chk12 IS NOT INITIAL.
+      PERFORM fcatalv USING: 'NOTIFINFOGRP1'   '' 'CR Computer Tax Card Expiry Notif Info'.
+    ENDIF.
+    IF p_chk14 IS NOT INITIAL.
+      PERFORM fcatalv USING: 'NOTIFINFOGRP2'   '' 'Maintain Expiry Date Notif Info'.
+    ENDIF.
+  ENDIF.
+
+  IF p_chk13a IS NOT INITIAL OR p_chk13b IS NOT INITIAL OR p_chk13c IS NOT INITIAL OR
+    p_chk15 IS NOT INITIAL OR p_chk16 IS NOT INITIAL OR p_chk17 IS NOT INITIAL OR p_chk18 IS NOT INITIAL.
+    PERFORM fcatalv USING: 'ZNEXREVIEW_DATE' '' 'Evaluation Next Review Date',
+                           'OWNSDESC1'       '' 'Enduser Department',
+                           'OWNSEKGRP1'      '' 'Enduser Department ID',
+                           'DESC1'           '' 'VE Curr. Department',
+                           'EKGRP1'          '' 'VE Curr. Department ID',
+                           'ASSIGNEDATE'     '' 'VE Last Submission Date',
+                           'SEQ'             '' 'VE Sequential',
+                           'ZYEAR1'          '' 'VE Year',
+                           'CREATEDDATE'     '' 'VE Created Date',
+                           'COMP_DT'         '' 'VE Completed Date'.
+    IF p_chk13a IS NOT INITIAL OR p_chk13b IS NOT INITIAL OR p_chk13c IS NOT INITIAL.
+      PERFORM fcatalv USING: 'NOTIFINFOGRP3'   '' 'Vendor Evaluation Expiry Notif Info'.
+    ENDIF.
+    IF p_chk15 IS NOT INITIAL OR p_chk16 IS NOT INITIAL OR p_chk17 IS NOT INITIAL OR p_chk18 IS NOT INITIAL.
+      PERFORM fcatalv USING: 'NOTIFINFOGRP4'   '' 'Complete Vendor Evaluation Notif Info'.
+    ENDIF.
+  ENDIF.
+
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+    EXPORTING
+      i_callback_program = sy-repid
+      it_fieldcat        = it_fcatalv
+    TABLES
+      t_outtab           = gt_vendornotificationsalv
+    EXCEPTIONS
+      program_error      = 1
+      OTHERS             = 2.
+ENDFORM.
+
+FORM fcatalv  USING VALUE(p_1)
+                    VALUE(p_2)
+                    VALUE(p_3).
+  wa_fcatalv-fieldname = p_1.
+  wa_fcatalv-seltext_l = p_3.
+  wa_fcatalv-hotspot = p_2.
+  APPEND wa_fcatalv TO it_fcatalv.
+  CLEAR wa_fcatalv.
+ENDFORM.
