@@ -1,0 +1,892 @@
+*&---------------------------------------------------------------------*
+*& Report ZML81N_APPROVAL
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT zml81n_approval MESSAGE-ID zmm.
+
+TABLES: essr, ekko.
+
+TYPES: BEGIN OF ty_final,
+         lblni            TYPE lblni,
+         erdat            TYPE erdat,
+         ernam            TYPE ernam,
+         erzet            TYPE erzet,
+         appr1_user       TYPE zappr1_user,
+         appr2_user       TYPE zappr2_user,
+         appr3_user       TYPE zappr3_user,
+         appr4_user       TYPE zappr4_user,
+         appr5_user       TYPE zappr5_user, "ADDED BY DP 22-01
+         approved         TYPE zapproved,
+         approval_status1 TYPE zapproval_status,
+         approved_by1     TYPE zapproved_by,
+         approved_on1     TYPE zapproved_on,
+         approved_at1     TYPE zapproved_at,
+         approval_status2 TYPE zapproval_status,
+         approved_by2     TYPE zapproved_by,
+         approved_on2     TYPE zapproved_on,
+         approved_at2     TYPE zapproved_at,
+         approval_status3 TYPE zapproval_status,
+         approved_by3     TYPE zapproved_by,
+         approved_on3     TYPE zapproved_on,
+         approved_at3     TYPE zapproved_at,
+         approval_status4 TYPE zapproval_status,
+         approved_by4     TYPE zapproved_by,
+         approved_on4     TYPE zapproved_on,
+         approved_at4     TYPE zapproved_at,
+         approval_status5 TYPE zapproval_status, "ADDED BY DP ON 22-01
+         approved_by5     TYPE zapproved_by,
+         approved_on5     TYPE zapproved_on,
+         approved_at5     TYPE zapproved_at,
+         txz01            TYPE essr-txz01,
+         ebeln            TYPE essr-ebeln,
+         ebelp            TYPE essr-ebelp,
+         netwr            TYPE essr-netwr,
+         ekgrp            TYPE ekko-ekgrp,    "ADDED BY SD
+         sel              TYPE xfeld,
+       END OF ty_final.
+
+
+DATA: t_final    TYPE STANDARD TABLE OF ty_final,
+      t_fieldcat TYPE STANDARD TABLE OF lvc_s_fcat.
+
+DATA: wa_final    TYPE ty_final,
+      wa_layout   TYPE lvc_s_layo,
+      wa_fieldcat TYPE lvc_s_fcat.
+
+
+DATA : msg TYPE REF TO cl_bcs_message.
+
+DATA : v_user    TYPE xubname,                       " v_user is parnr of given qmnum who is user  v_user = '1921'.
+       v_email   TYPE bapiadsmtp,
+       it_return TYPE STANDARD TABLE OF bapiret2,
+       v_address TYPE bapiaddr3,
+       l_text    TYPE string,
+       l_text1   TYPE string,
+       l_text2   TYPE string,
+       l_text3   TYPE string,
+       l_text4   TYPE string,
+       l_text5   TYPE string,        " ADDED BY DP
+       email     TYPE  bcs_address.
+
+SELECTION-SCREEN: BEGIN OF BLOCK b0 WITH FRAME TITLE TEXT-t01.
+  SELECT-OPTIONS : s_ebeln FOR essr-ebeln,
+                   s_lblnr FOR essr-lblni,
+                   s_erdat FOR essr-erdat.
+SELECTION-SCREEN: END OF BLOCK b0.
+
+SELECTION-SCREEN: BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-t02.
+  PARAMETERS: report  RADIOBUTTON GROUP rbg DEFAULT 'X' USER-COMMAND abcd,
+              approve RADIOBUTTON GROUP rbg.
+SELECTION-SCREEN: END OF BLOCK b1.
+
+SELECTION-SCREEN: BEGIN OF BLOCK b2 WITH FRAME TITLE TEXT-t03. " TECHNICAL APPROVAL
+  PARAMETERS: app1 RADIOBUTTON GROUP rbg2 MODIF ID ap,
+              app2 RADIOBUTTON GROUP rbg2 MODIF ID ap,
+              app3 RADIOBUTTON GROUP rbg2 MODIF ID ap,
+              app4 RADIOBUTTON GROUP rbg2 MODIF ID ap,
+              app5 RADIOBUTTON GROUP rbg2 MODIF ID ap.
+
+SELECTION-SCREEN: END OF BLOCK b2.
+
+
+
+INITIALIZATION.
+
+  PERFORM form_initialize.
+
+AT SELECTION-SCREEN OUTPUT.
+
+  PERFORM form_screen.
+
+START-OF-SELECTION.
+
+  PERFORM form_fetch_data.
+
+END-OF-SELECTION.
+
+  IF t_final[] IS INITIAL.
+    MESSAGE s000 WITH 'No data found'.
+  ELSE.
+    PERFORM form_display.
+  ENDIF.
+
+
+*&---------------------------------------------------------------------*
+*& Form form_initialize
+*&---------------------------------------------------------------------*
+FORM form_initialize .
+
+  REFRESH: t_final, t_fieldcat.
+
+ENDFORM.
+
+
+
+*&---------------------------------------------------------------------*
+*& Form form_screen
+*&---------------------------------------------------------------------*
+FORM form_screen .
+
+  LOOP AT SCREEN.
+    IF report EQ 'X' AND screen-group1 EQ 'AP'.
+      screen-active = 0.
+      MODIFY SCREEN.
+    ENDIF.
+  ENDLOOP.
+
+ENDFORM.
+
+
+*&---------------------------------------------------------------------*
+*& Form form_fetch_data
+*&---------------------------------------------------------------------*
+
+"Changed by SD
+FORM form_fetch_data.
+
+  DATA: lt_final TYPE TABLE OF ty_final,
+        wa_final LIKE LINE OF lt_final.
+
+  " Fetch data into lt_final
+  SELECT a~lblni
+         a~erdat
+         a~ernam
+         a~erzet
+         a~appr1_user
+         a~appr2_user
+         a~appr3_user
+         a~appr4_user
+         a~appr5_user       " ADDED BY DP
+         a~approved
+         a~approval_status1
+         a~approved_by1
+         a~approved_on1
+         a~approved_at1
+         a~approval_status2
+         a~approved_by2
+         a~approved_on2
+         a~approved_at2
+         a~approval_status3
+         a~approved_by3
+         a~approved_on3
+         a~approved_at3
+         a~approval_status4
+         a~approved_by4
+         a~approved_on4
+         a~approved_at4
+         a~approval_status5  " ADDED BY DP
+         a~approved_by5
+         a~approved_on5
+         a~approved_at5
+         b~txz01
+         b~ebeln
+         b~ebelp
+         b~netwr
+         c~ekgrp              " Added by Sarika
+    INTO TABLE lt_final
+    FROM zml81n_approval AS a
+    INNER JOIN essr AS b ON a~lblni EQ b~lblni
+    INNER JOIN ekko AS c ON b~ebeln EQ c~ebeln
+    WHERE a~lblni IN s_lblnr
+      AND a~erdat IN s_erdat
+      AND b~ebeln IN s_ebeln
+      AND b~loekz EQ space.
+
+
+  " Loop through fetched data
+  LOOP AT lt_final INTO wa_final.
+
+    IF approve EQ 'X'.
+
+      DELETE lt_final WHERE approved EQ 'X'.
+
+      IF wa_final-ekgrp EQ '104' OR wa_final-ekgrp EQ '106' OR wa_final-ekgrp EQ '108' OR wa_final-ekgrp EQ '111' OR wa_final-ekgrp EQ '113'.
+
+
+        IF app1 EQ 'X'.
+
+          DELETE lt_final WHERE approval_status1 EQ 'A'.
+          DELETE lt_final WHERE appr1_user NE sy-uname.
+
+        ELSEIF app2 EQ 'X'.
+
+*          DELETE lt_final WHERE approval_status1 NE 'A'.
+*          DELETE lt_final WHERE approval_status2 NE 'A'.
+*          DELETE lt_final WHERE appr2_user NE sy-uname.
+
+          IF wa_final-approval_status1 NE 'A'.
+          ELSE.
+            DELETE lt_final.
+          ENDIF.
+
+        ELSEIF app3 EQ 'X'.
+
+*          DELETE lt_final WHERE approval_status1 NE 'A'.
+*          DELETE lt_final WHERE approval_status2 NE 'A'.
+*          DELETE lt_final WHERE approval_status3 NE 'A'.
+*          DELETE lt_final WHERE appr3_user NE sy-uname.
+          IF wa_final-approval_status1 NE 'A'.
+          ELSE.
+            DELETE lt_final.
+          ENDIF.
+
+        ELSEIF app4 EQ 'X'.
+
+*          DELETE lt_final WHERE approval_status1 NE 'A'.
+*          DELETE lt_final WHERE approval_status2 NE 'A'.
+*          DELETE lt_final WHERE approval_status3 NE 'A'.
+*          DELETE lt_final WHERE approval_status4 NE 'A'.
+*          DELETE lt_final WHERE appr4_user NE sy-uname.
+          IF wa_final-approval_status1 NE 'A'.
+          ELSE.
+            DELETE lt_final.
+          ENDIF.
+
+        ELSEIF app5 EQ 'X'.
+
+          IF wa_final-approval_status1 EQ 'A'.
+          ELSE.
+            DELETE lt_final.
+          ENDIF.
+
+        ENDIF.
+
+      ELSEIF wa_final-ekgrp EQ '100' OR wa_final-ekgrp EQ '101' OR wa_final-ekgrp EQ '102' OR wa_final-ekgrp EQ '103'
+        OR wa_final-ekgrp EQ '105' OR wa_final-ekgrp EQ '107' OR wa_final-ekgrp EQ '109' OR wa_final-ekgrp EQ '110'
+        OR wa_final-ekgrp EQ '112' OR wa_final-ekgrp EQ '114' OR wa_final-ekgrp EQ '115' OR wa_final-ekgrp EQ '201'
+        OR wa_final-ekgrp EQ '202'.
+
+
+
+        IF app1 EQ 'X'.
+
+          DELETE lt_final WHERE approval_status1 EQ 'A'.
+          DELETE lt_final WHERE appr1_user NE sy-uname.
+
+        ELSEIF app2 EQ 'X'.
+
+          DELETE lt_final WHERE approval_status1 NE 'A'.
+          DELETE lt_final WHERE approval_status2 EQ 'A'.
+          DELETE lt_final WHERE appr2_user NE sy-uname.
+
+        ELSEIF app3 EQ 'X'.
+
+          DELETE lt_final WHERE approval_status1 NE 'A'.
+          DELETE lt_final WHERE approval_status2 NE 'A'.
+          DELETE lt_final WHERE approval_status3 EQ 'A'.
+          DELETE lt_final WHERE appr3_user NE sy-uname.
+
+        ELSEIF app4 EQ 'X'.
+
+          DELETE lt_final WHERE approval_status1 NE 'A'.
+          DELETE lt_final WHERE approval_status2 NE 'A'.
+          DELETE lt_final WHERE approval_status3 NE 'A'.
+          DELETE lt_final WHERE approval_status4 EQ 'A'.
+          DELETE lt_final WHERE appr4_user NE sy-uname.
+
+        ELSEIF app5 EQ 'X'.
+*
+*          DELETE lt_final WHERE approval_status1 NE 'A'.
+*          DELETE lt_final WHERE approval_status2 NE 'A'.
+*          DELETE lt_final WHERE approval_status3 NE 'A'.
+*          DELETE lt_final WHERE approval_status4 NE 'A'.
+*          DELETE lt_final WHERE approval_status5 EQ 'A'.
+*          DELETE lt_final WHERE appr5_user NE sy-uname.
+
+*          IF wa_final-approval_status1 EQ 'A'AND
+*             wa_final-approval_status2 EQ 'A' AND
+*             wa_final-approval_status3 EQ 'A' AND
+*             wa_final-approval_status4 EQ 'A'AND
+*            wa_final-approval_status5 EQ 'A'AND
+*            wa_final-appr5_user NE sy-uname.
+*          ELSE.
+*            DELETE lt_final.
+**            DELETE lt_final WHERE appr4_user NE sy-uname.
+*          ENDIF.
+
+          IF wa_final-approval_status1 EQ 'A' AND
+             wa_final-approval_status2 EQ 'A' AND
+             wa_final-approval_status3 EQ 'A' AND
+             wa_final-approval_status4 EQ 'A'.
+          ELSE.
+            DELETE lt_final.
+          ENDIF.
+
+
+
+        ENDIF.
+
+      ENDIF.
+
+    ENDIF.
+
+  ENDLOOP.
+
+  " Copy filtered data back to original internal table
+  CLEAR t_final.
+  LOOP AT lt_final INTO wa_final.
+    APPEND wa_final TO t_final.
+  ENDLOOP.
+
+ENDFORM.
+
+
+
+
+
+*&---------------------------------------------------------------------*
+*& Form FORM_DISPLAY
+*&---------------------------------------------------------------------*
+FORM form_display .
+
+  wa_layout-cwidth_opt  = 'X'.
+
+  IF approve EQ 'X'.
+    wa_layout-box_fname   = 'SEL'.
+  ENDIF.
+
+  PERFORM form_fieldcat USING 'LBLNI' 'Service Entry Sheet'.
+  PERFORM form_fieldcat USING 'EBELN' 'PO Number'.
+  PERFORM form_fieldcat USING 'EKGRP' 'Purchase Grp'.   "Added by SD
+  PERFORM form_fieldcat USING 'EBELP' 'PO Item'.
+  PERFORM form_fieldcat USING 'TXZ01' 'Description'.
+  PERFORM form_fieldcat USING 'NETWR' 'Amount'.
+  PERFORM form_fieldcat USING 'ERNAM' 'Created By'.
+  PERFORM form_fieldcat USING 'ERDAT' 'Created On'.
+  PERFORM form_fieldcat USING 'ERZET' 'Created At'.
+  PERFORM form_fieldcat USING 'APPR1_USER' 'Approver 1'.
+  PERFORM form_fieldcat USING 'APPROVED' 'Approved'.
+  PERFORM form_fieldcat USING 'APPROVAL_STATUS1' 'Approval 1'.
+  PERFORM form_fieldcat USING 'APPROVED_BY1' 'Approval 1 Usr'.
+  PERFORM form_fieldcat USING 'APPROVED_ON1' 'Approval 1 Dt'.
+  PERFORM form_fieldcat USING 'APPROVED_AT1' 'Approval 1 Tm'.
+  PERFORM form_fieldcat USING 'APPROVAL_STATUS2' 'Approval 2'.
+  PERFORM form_fieldcat USING 'APPROVED_BY2' 'Approval 2 Usr'.
+  PERFORM form_fieldcat USING 'APPROVED_ON2' 'Approval 2 Dt'.
+  PERFORM form_fieldcat USING 'APPROVED_AT2' 'Approval 2 Tm'.
+  PERFORM form_fieldcat USING 'APPROVAL_STATUS3' 'Approval 3'.
+  PERFORM form_fieldcat USING 'APPROVED_BY3' 'Approval 3 Usr'.
+  PERFORM form_fieldcat USING 'APPROVED_ON3' 'Approval 3 Dt'.
+  PERFORM form_fieldcat USING 'APPROVED_AT3' 'Approval 3 Tm'.
+  PERFORM form_fieldcat USING 'APPROVAL_STATUS4' 'Approval 4'.
+  PERFORM form_fieldcat USING 'APPROVED_BY4' 'Approval 4 Usr'.
+  PERFORM form_fieldcat USING 'APPROVED_ON4' 'Approval 4 Dt'.
+  PERFORM form_fieldcat USING 'APPROVED_AT4' 'Approval 4 Tm'.
+  PERFORM form_fieldcat USING 'APPROVAL_STATUS5' 'Approval 5'.  "ADDED BY DP 22-01
+  PERFORM form_fieldcat USING 'APPROVED_BY5' 'Approval 5 Usr'.
+  PERFORM form_fieldcat USING 'APPROVED_ON5' 'Approval 5 Dt'.
+  PERFORM form_fieldcat USING 'APPROVED_AT5' 'Approval 5 Tm'.
+
+
+
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY_LVC'
+    EXPORTING
+      i_callback_program       = sy-repid
+      i_callback_pf_status_set = 'FORM_PF_STATUS'
+      i_callback_user_command  = 'FORM_USER_COMMAND'
+      is_layout_lvc            = wa_layout
+      it_fieldcat_lvc          = t_fieldcat[]
+      i_save                   = 'A'
+    TABLES
+      t_outtab                 = t_final[]
+    EXCEPTIONS
+      program_error            = 1
+      OTHERS                   = 2.
+
+ENDFORM.
+
+
+*&---------------------------------------------------------------------*
+*&      Form  FORM_FIELDCAT
+*&---------------------------------------------------------------------*
+*       Field Catalog
+*----------------------------------------------------------------------*
+FORM form_fieldcat  USING    field   TYPE lvc_fname
+                             text    TYPE scrtext_l.
+
+  CLEAR: wa_fieldcat.
+  wa_fieldcat-tabname    = 'T_FINAL'.
+  wa_fieldcat-fieldname  = field.
+  wa_fieldcat-scrtext_l  = text.
+
+  IF field EQ 'TXZ01'.
+    wa_fieldcat-lowercase = 'X'.
+    wa_fieldcat-outputlen = 20.
+  ENDIF.
+
+  IF field EQ 'LBLNI'.
+    wa_fieldcat-convexit = 'ALPHA'.
+  ENDIF.
+
+  IF  field EQ 'EBELN'.
+    wa_fieldcat-convexit = 'ALPHA'.
+    wa_fieldcat-hotspot = 'X'.
+  ENDIF.
+
+  IF field EQ 'APPROVED'.
+    wa_fieldcat-checkbox = 'X'.
+  ENDIF.
+
+  IF field EQ 'APPROVED_AT1' OR field EQ 'APPROVED_AT2' OR field EQ 'APPROVED_AT3' OR field EQ 'APPROVED_AT4' OR field EQ 'APPROVED_AT5'.
+    wa_fieldcat-no_zero = 'X'.
+  ENDIF.
+
+  APPEND wa_fieldcat TO t_fieldcat.
+
+ENDFORM.                    " FORM_FIELDCAT
+
+
+*&---------------------------------------------------------------------*
+*&      Form  FORM_PF_STATUS
+*&---------------------------------------------------------------------*
+*       Sets the PF-Status
+*----------------------------------------------------------------------*
+*      -->RT_EXTAB   Excluding Function Codes
+*----------------------------------------------------------------------*
+FORM form_pf_status USING rt_extab TYPE slis_t_extab.
+
+* Local data declaration
+  DATA: lwa_extab TYPE slis_extab.
+
+  REFRESH: rt_extab.
+
+  IF report EQ 'X'.
+    lwa_extab-fcode = 'APPROVE'.
+    APPEND lwa_extab TO rt_extab.
+    lwa_extab-fcode = 'REJECT'.
+    APPEND lwa_extab TO rt_extab.
+  ENDIF.
+
+  SET PF-STATUS 'ZSTAT' EXCLUDING rt_extab.
+
+ENDFORM.                    "FORM_PF_STATUS
+
+
+*&---------------------------------------------------------------------*
+*&      Form  FORM_USER_COMMAND
+*&---------------------------------------------------------------------*
+*       Function-Code Processing
+*----------------------------------------------------------------------*
+*      -->R_UCOMM      User Command
+*      -->RS_SELFIELD  Selection Row
+*----------------------------------------------------------------------*
+FORM form_user_command USING r_ucomm LIKE sy-ucomm
+                             rs_selfield TYPE slis_selfield.
+
+* Local data declaration
+  DATA: lv_ref1  TYPE REF TO cl_gui_alv_grid.
+
+  CALL FUNCTION 'GET_GLOBALS_FROM_SLVC_FULLSCR'
+    IMPORTING
+      e_grid = lv_ref1.
+  CALL METHOD lv_ref1->check_changed_data.
+
+  CASE r_ucomm.
+
+    WHEN 'APPROVE'.
+      PERFORM form_action_ses USING 'A'.
+
+    WHEN 'REJECT'.
+      PERFORM form_action_ses USING 'R'.
+
+    WHEN '&IC1'.
+    AUTHORITY-CHECK OBJECT 'ZAUTNO'
+   ID 'ACTVT' FIELD '03'.
+    IF sy-subrc NE 0.
+      MESSAGE i010(zmm) WITH 'No Authorization to edit'.
+    ELSE.
+      SET PARAMETER ID 'BES' FIELD rs_selfield-value.
+       CALL TRANSACTION 'ME23N'.
+    ENDIF.
+  ENDCASE.
+
+  rs_selfield-refresh = 'X'.
+
+ENDFORM.                    "FORM_USER_COMMAND
+
+
+*&---------------------------------------------------------------------*
+*& Form form_ACTION_SES
+*&---------------------------------------------------------------------*
+FORM form_action_ses  USING action TYPE zapproval_status.
+
+
+  DATA: lt_final   TYPE STANDARD TABLE OF ty_final,
+        lwa_final  TYPE ty_final,
+        lw_index   TYPE sytabix,
+        lw_success TYPE xfeld.
+
+  REFRESH: lt_final. CLEAR: lwa_final, lw_index, lw_success.
+
+* Deselect Filtered entries
+  DATA: lt_filter  TYPE slis_t_filtered_entries,
+        lwa_filter LIKE LINE OF lt_filter.
+  REFRESH: lt_filter.
+  CALL FUNCTION 'REUSE_ALV_GRID_LAYOUT_INFO_GET'
+    IMPORTING
+      et_filtered_entries = lt_filter
+    EXCEPTIONS
+      no_infos            = 1
+      program_error       = 2
+      OTHERS              = 3.
+  IF lt_filter IS NOT INITIAL.
+    LOOP AT t_final INTO wa_final WHERE sel EQ 'X'.
+      lw_index = sy-tabix.
+      READ TABLE lt_filter INTO lwa_filter WITH KEY = lw_index.
+      IF sy-subrc EQ 0.
+        CLEAR: wa_final-sel.
+        MODIFY t_final FROM wa_final INDEX lw_index TRANSPORTING sel.
+      ENDIF.
+      CLEAR: lw_index, wa_final, lwa_filter.
+    ENDLOOP.
+  ENDIF.
+
+  LOOP AT t_final INTO wa_final WHERE sel EQ 'X'.
+    EXIT.
+  ENDLOOP.
+
+  IF sy-subrc NE 0.
+    MESSAGE i000 WITH 'Please select at least one record'.
+  ELSE.
+
+    LOOP AT t_final INTO wa_final WHERE sel EQ 'X'.
+
+      lw_index = sy-tabix.
+
+      IF app1 EQ 'X'.
+
+        wa_final-approval_status1 = action.
+        wa_final-approved_by1     = sy-uname.
+        wa_final-approved_on1     = sy-datum.
+        wa_final-approved_at1     = sy-uzeit.
+
+        CLEAR: wa_final-sel.
+
+        UPDATE zml81n_approval
+        SET approval_status1 = wa_final-approval_status1
+            approved_by1     = wa_final-approved_by1
+            approved_on1     = wa_final-approved_on1
+            approved_at1     = wa_final-approved_at1
+        WHERE lblni EQ wa_final-lblni.
+        IF sy-subrc EQ 0.
+          COMMIT WORK AND WAIT.
+          lw_success = 'X'.
+          DELETE t_final INDEX lw_index.
+        ENDIF.
+
+        v_user = wa_final-appr2_user.
+
+        CALL FUNCTION 'BAPI_USER_GET_DETAIL'
+          EXPORTING
+            username = v_user
+          IMPORTING
+*           LOGONDATA               =
+            address  = v_address
+*           COMPANY  =
+*           SAPUSER_UUID            =
+          TABLES
+*           PARAMETER               =
+*           ACTIVITYGROUPS          =
+            return   = it_return.
+        email = v_address-e_mail.
+
+        IF email IS NOT INITIAL..
+          "CONCATENATE 'Petty Cash Top Up Approval Request-' wa_fbcj-posting_number into l_text1 SEPARATED BY space.
+          CONCATENATE 'Dear Approver,'cl_abap_char_utilities=>newline cl_abap_char_utilities=>newline
+           'Please approve the Service entry sheet number ' wa_final-lblni 'against the Purchase Order' wa_final-ebeln '.'
+       cl_abap_char_utilities=>newline
+
+          cl_abap_char_utilities=>newline 'Regards,'
+          cl_abap_char_utilities=>newline 'GCC IT' INTO l_text SEPARATED BY space .
+
+          CREATE OBJECT msg.
+
+          msg->set_subject('Service Entry Sheet  Aprroval').
+          msg->set_main_doc( iv_contents_txt = l_text ).
+
+          msg->add_recipient(  email ).
+          msg->send( ).
+
+          IF msg IS NOT INITIAL.
+            FREE: msg.
+          ENDIF.
+
+          "ENDIF.
+
+
+        ENDIF.
+        " CLEAR:  wa_email.
+        "  ENDLOOP.
+
+
+
+      ELSEIF app2 EQ 'X'.
+
+        wa_final-approval_status2 = action.
+        wa_final-approved_by2     = sy-uname.
+        wa_final-approved_on2     = sy-datum.
+        wa_final-approved_at2     = sy-uzeit.
+
+        CLEAR: wa_final-sel.
+
+        UPDATE zml81n_approval
+        SET approval_status2 = wa_final-approval_status2
+            approved_by2     = wa_final-approved_by2
+            approved_on2     = wa_final-approved_on2
+            approved_at2     = wa_final-approved_at2
+        WHERE lblni EQ wa_final-lblni..
+        IF sy-subrc EQ 0.
+          COMMIT WORK AND WAIT.
+          lw_success = 'X'.
+          DELETE t_final INDEX lw_index.
+        ENDIF.
+
+        v_user = wa_final-appr3_user.
+
+        CALL FUNCTION 'BAPI_USER_GET_DETAIL'
+          EXPORTING
+            username = v_user
+          IMPORTING
+*           LOGONDATA               =
+            address  = v_address
+*           COMPANY  =
+*           SAPUSER_UUID            =
+          TABLES
+*           PARAMETER               =
+*           ACTIVITYGROUPS          =
+            return   = it_return.
+        email = v_address-e_mail.
+
+        IF email IS NOT INITIAL..
+          "CONCATENATE 'Petty Cash Top Up Approval Request-' wa_fbcj-posting_number into l_text1 SEPARATED BY space.
+          CONCATENATE 'Dear Approver,'cl_abap_char_utilities=>newline cl_abap_char_utilities=>newline
+           'Please approve the  Service entry sheet number' wa_final-lblni 'against the Purchase Order' wa_final-ebeln '.'
+       cl_abap_char_utilities=>newline
+
+          cl_abap_char_utilities=>newline 'Regards,'
+          cl_abap_char_utilities=>newline 'GCC IT' INTO l_text SEPARATED BY space .
+
+          CREATE OBJECT msg.
+
+          msg->set_subject('Service Entry Sheet  Aprroval').
+          msg->set_main_doc( iv_contents_txt = l_text ).
+
+          msg->add_recipient(  email ).
+          msg->send( ).
+
+          IF msg IS NOT INITIAL.
+            FREE: msg.
+          ENDIF.
+
+          "ENDIF.
+
+
+        ENDIF.
+
+      ELSEIF app3 EQ 'X'.
+
+        wa_final-approval_status3 = action.
+        wa_final-approved_by3     = sy-uname.
+        wa_final-approved_on3     = sy-datum.
+        wa_final-approved_at3     = sy-uzeit.
+
+        CLEAR: wa_final-sel.
+
+        UPDATE zml81n_approval
+        SET approval_status3 = wa_final-approval_status3
+            approved_by3     = wa_final-approved_by3
+            approved_on3     = wa_final-approved_on3
+            approved_at3     = wa_final-approved_at3
+        WHERE lblni EQ wa_final-lblni.
+        IF sy-subrc EQ 0.
+          COMMIT WORK AND WAIT.
+          lw_success = 'X'.
+          DELETE t_final INDEX lw_index.
+
+        ENDIF.
+        v_user = wa_final-appr4_user.
+
+        CALL FUNCTION 'BAPI_USER_GET_DETAIL'
+          EXPORTING
+            username = v_user
+          IMPORTING
+*           LOGONDATA               =
+            address  = v_address
+*           COMPANY  =
+*           SAPUSER_UUID            =
+          TABLES
+*           PARAMETER               =
+*           ACTIVITYGROUPS          =
+            return   = it_return.
+        email = v_address-e_mail.
+
+        IF email IS NOT INITIAL..
+          "CONCATENATE 'Petty Cash Top Up Approval Request-' wa_fbcj-posting_number into l_text1 SEPARATED BY space.
+          CONCATENATE 'Dear Approver,'cl_abap_char_utilities=>newline cl_abap_char_utilities=>newline
+           'Please approve the Service entry sheet number' wa_final-lblni 'against the Purchase Order' wa_final-ebeln '.'
+       cl_abap_char_utilities=>newline
+
+          cl_abap_char_utilities=>newline 'Regards,'
+          cl_abap_char_utilities=>newline 'GCC IT' INTO l_text SEPARATED BY space .
+
+          CREATE OBJECT msg.
+
+          msg->set_subject('Service Entry Sheet  Approval').
+          msg->set_main_doc( iv_contents_txt = l_text ).
+
+          msg->add_recipient(  email ).
+          msg->send( ).
+
+          IF msg IS NOT INITIAL.
+            FREE: msg.
+          ENDIF.
+
+          "ENDIF.
+
+
+        ENDIF.
+      ELSEIF app4 EQ 'X'.
+
+        wa_final-approval_status4 = action.
+        wa_final-approved_by4     = sy-uname.
+        wa_final-approved_on4     = sy-datum.
+        wa_final-approved_at4     = sy-uzeit.
+
+        IF action EQ 'A'.
+          wa_final-approved = 'X'.
+        ENDIF.
+
+        CLEAR: wa_final-sel.
+
+        UPDATE zml81n_approval
+        SET approval_status4 = wa_final-approval_status4
+            approved_by4     = wa_final-approved_by4
+            approved_on4     = wa_final-approved_on4
+            approved_at4     = wa_final-approved_at4
+        WHERE lblni EQ wa_final-lblni.
+        IF sy-subrc EQ 0.
+          COMMIT WORK AND WAIT.
+          lw_success = 'X'.
+          DELETE t_final INDEX lw_index.
+        ENDIF.
+
+*        v_user = wa_final-appr4_user.
+        v_user = wa_final-appr5_user.
+
+        CALL FUNCTION 'BAPI_USER_GET_DETAIL'
+          EXPORTING
+            username = v_user
+          IMPORTING
+*           LOGONDATA               =
+            address  = v_address
+*           COMPANY  =
+*           SAPUSER_UUID            =
+          TABLES
+*           PARAMETER               =
+*           ACTIVITYGROUPS          =
+            return   = it_return.
+        email = v_address-e_mail.
+
+        IF email IS NOT INITIAL..
+          "CONCATENATE 'Petty Cash Top Up Approval Request-' wa_fbcj-posting_number into l_text1 SEPARATED BY space.
+          CONCATENATE 'Dear Creator,'cl_abap_char_utilities=>newline cl_abap_char_utilities=>newline
+           ' The Service entry sheet number' wa_final-lblni 'against the Purchase Order' wa_final-ebeln 'is approved, you can release now.'
+       cl_abap_char_utilities=>newline
+
+          cl_abap_char_utilities=>newline 'Regards,'
+          cl_abap_char_utilities=>newline 'GCC IT' INTO l_text SEPARATED BY space .
+
+          CREATE OBJECT msg.
+
+          msg->set_subject('Service Entry Sheet  Approval').
+          msg->set_main_doc( iv_contents_txt = l_text ).
+
+          msg->add_recipient(  email ).
+          msg->send( ).
+
+          IF msg IS NOT INITIAL.
+            FREE: msg.
+          ENDIF.
+
+          "ENDIF.
+
+        ENDIF.
+
+      ELSEIF app5 EQ 'X'.                " ADDED BY DP ON 22-01
+
+        wa_final-approval_status5 = action.
+        wa_final-approved_by5     = sy-uname.
+        wa_final-approved_on5     = sy-datum.
+        wa_final-approved_at5     = sy-uzeit.
+
+        IF action EQ 'A'.
+          wa_final-approved = 'X'.
+        ENDIF.
+
+        CLEAR: wa_final-sel.
+
+        UPDATE zml81n_approval
+        SET approved         = wa_final-approved
+            approval_status5 = wa_final-approval_status5
+            approved_by5     = wa_final-approved_by5
+            approved_on5     = wa_final-approved_on5
+            approved_at5     = wa_final-approved_at5
+        WHERE lblni EQ wa_final-lblni.
+        IF sy-subrc EQ 0.
+          COMMIT WORK AND WAIT.
+          lw_success = 'X'.
+          DELETE t_final INDEX lw_index.
+        ENDIF.
+        v_user = wa_final-ernam.
+
+        CALL FUNCTION 'BAPI_USER_GET_DETAIL'
+          EXPORTING
+            username = v_user
+          IMPORTING
+*           LOGONDATA               =
+            address  = v_address
+*           COMPANY  =
+*           SAPUSER_UUID            =
+          TABLES
+*           PARAMETER               =
+*           ACTIVITYGROUPS          =
+            return   = it_return.
+        email = v_address-e_mail.
+
+        IF email IS NOT INITIAL.
+          "CONCATENATE 'Petty Cash Top Up Approval Request-' wa_fbcj-posting_number into l_text1 SEPARATED BY space.
+          CONCATENATE 'Dear Creator,'cl_abap_char_utilities=>newline cl_abap_char_utilities=>newline
+           ' The Service entry sheet number' wa_final-lblni 'against the Purchase Order' wa_final-ebeln 'is approved, you can release now.'
+          cl_abap_char_utilities=>newline
+
+          cl_abap_char_utilities=>newline 'Regards,'
+          cl_abap_char_utilities=>newline 'GCC IT' INTO l_text SEPARATED BY space .
+
+          CREATE OBJECT msg.
+
+          msg->set_subject('Service Entry Sheet  Approval').
+          msg->set_main_doc( iv_contents_txt = l_text ).
+
+          msg->add_recipient(  email ).
+          msg->send( ).
+
+          IF msg IS NOT INITIAL.
+            FREE: msg.
+          ENDIF.
+
+        ENDIF.
+
+      ENDIF.
+
+
+      CLEAR: lw_index, wa_final.
+
+    ENDLOOP.
+
+    IF lw_success EQ 'X'.
+      MESSAGE s000 WITH 'Approvals Updated'.
+    ENDIF.
+
+  ENDIF.
+ENDFORM.
